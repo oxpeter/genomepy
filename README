@@ -1,0 +1,14 @@
+# Created March 2014 by Peter Oxley and Ben Matthews
+# Postdoctoral Fellows at The Rockefeller University
+# March 2014
+#
+# poxley@rockefeller.edu
+
+This is a set of python modules that allows analysis of local genome data for use with microsatellite analysis, PCR creation or CRISPR analysis. A few tools also have been added which allow interaction with some of NCBI's web tools.
+
+Prerequisites:
+crispralign requires pysam and argparse python modules 
+crispralign also requires samtools, gsnap and pysamstats
+
+genematch requires the biopython python module
+
