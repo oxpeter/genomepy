@@ -115,6 +115,32 @@ def make_bed(gff_file):
 
 ##### GFF FILE MANIPULATION #####
 
+def parse_names(genelist, gffobj):
+    "takes a gene or list of genes and returns the gene name from the gff file"
+    ## Create dictionary of gene ids and their corresponding names:
+    namedict = {}
+    
+    for scaf in gffobj:
+        for feature in gffobj[scaf].features:
+            namedict[feature.qualifiers['ID']] = feature.qualifiers['Name']
+
+    
+    ## Pull out names from supplied gene list:
+    output_dict = {}
+    if type(gene) == list:
+        for g in gene:
+            try:
+                output_dict[g] = namedict[g]
+            except KeyError:
+                print g, "was not found."
+    else:
+        try:
+            output_dict[gene] = namedict[gene]
+        except KeyError:
+            print gene, "was not found."
+
+    return output_dict
+
 def assemble_dict(in_file="/Volumes/Genome/armyant.OGS.V1.8.6.gff", in_seq_file="/Volumes/Genome/Cbir.assembly.v3.0.fa", features_only=False):
     """ Takes a gff file and the genome assembly and creates a SeqRecord dictionary.
 
@@ -302,10 +328,10 @@ def parse_go(gene, gofile='/Volumes/Genome/Genome_analysis/Gene_Ontology/armyant
         for element in columnset[2:]:
             gopattern = "GO:([0-9]*)"
             defpattern = "[a-z].*"
-            if gopattern is not None and defpattern is not None:
-                rego = re.search(gopattern, element)
-                defgo = re.search(defpattern, element)
-                go_dict[columnset[0]][rego.group()] = defgo.group()
+            rego = re.search(gopattern, element)
+            defgo = re.search(defpattern, element)
+            if rego is not None and defgo is not None:
+                go_dict[columnset[0]][rego.group()] = defgo.group().split(';')
 
     for element in go_dict:
         print element, go_dict[element]
@@ -325,6 +351,7 @@ def parse_go(gene, gofile='/Volumes/Genome/Genome_analysis/Gene_Ontology/armyant
             print gene, "was not found."
 
     return output_dict
+
 
 
 ##### INITIATION & MISC #####
@@ -353,6 +380,7 @@ def draw_gene(feature):
 
     gd_diagram.draw(format='linear', orientation='landscape', pagesize='A4', fragments=1, start=0, end=len(feature))
     gd_diagram.write("test_gene.img.pdf", "PDF")
+
 
 def test():
     """ The basic commands I have been running of '__main__'
@@ -542,18 +570,23 @@ def separate_cuffjoined(gtf_file, dblid):
 
 if __name__ == '__main__':
 
+    gffobj = assemble_dict()
+    
+
     deg_h = open('/Volumes/Genome/RNA_editing/cuffdiff_romain/pcombined.tmp', 'rb')
     genelist = []
     for line in deg_h:
         genelist.append(line.split()[0])
 
+    genenames = parse_names(genelist, gffobj)
+    
     genegos = parse_go(genelist)
     #print "genegos length", len(genegos)
     for gene in genegos:
         #print "number of GO terms: ", len(gene)
         for goterm in genegos[gene]:
             #print goterm
-            print "%-12s%-12s%s" % (gene, goterm, genegos[gene][goterm])
+            print "%-12s%-12s%-20s%s\t%s" % (gene, goterm, genegos[gene][goterm][1], genegos[gene][goterm][0] , genenames[gene])
 
     """
     isodict = assemble_dict(in_file="/Volumes/Genome/transcriptomes/BroodSwap/controls/C16/Cuffmerge/merged.filtered.separated.gff", in_seq_file="/Volumes/Genome/Cbir.assembly.v3.0_gi.fa")
