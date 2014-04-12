@@ -290,6 +290,43 @@ def get_sequence(scaf, gff_dict, feature):
     sequence.alphabet = IUPAC.ambiguous_dna
     return sequence
 
+def parse_go(gene, gofile='/Volumes/Genome/Genome_analysis/Gene_Ontology/armyant.OGS.V1.5.GOterms.list'):
+    "for a given gene or genelist, returns a dictionary of all GO terms associated with the gene"
+
+    # make dictionary of go terms:
+    go_dict = {}
+    go_handle = open(gofile, 'rb')
+    columns = [ line.split('\t') for line in go_handle ]
+    for columnset in columns:
+        go_dict[columnset[0]] = {}
+        for element in columnset[2:]:
+            gopattern = "GO:([0-9]*)"
+            defpattern = "[a-z].*"
+            if gopattern is not None and defpattern is not None:
+                rego = re.search(gopattern, element)
+                defgo = re.search(defpattern, element)
+                go_dict[columnset[0]][rego.group()] = defgo.group()
+
+    for element in go_dict:
+        print element, go_dict[element]
+
+    #determine if one gene or many:
+    output_dict = {}
+    if type(gene) == list:
+        for g in gene:
+            try:
+                output_dict[g] = go_dict[g]
+            except KeyError:
+                print g, "was not found."
+    else:
+        try:
+            output_dict[gene] = go_dict[gene]
+        except KeyError:
+            print gene, "was not found."
+
+    return output_dict
+
+
 ##### INITIATION & MISC #####
 
 def prime_variables():
@@ -505,6 +542,20 @@ def separate_cuffjoined(gtf_file, dblid):
 
 if __name__ == '__main__':
 
+    deg_h = open('/Volumes/Genome/RNA_editing/cuffdiff_romain/pcombined.tmp', 'rb')
+    genelist = []
+    for line in deg_h:
+        genelist.append(line.split()[0])
+
+    genegos = parse_go(genelist)
+    #print "genegos length", len(genegos)
+    for gene in genegos:
+        #print "number of GO terms: ", len(gene)
+        for goterm in genegos[gene]:
+            #print goterm
+            print "%-12s%-12s%s" % (gene, goterm, genegos[gene][goterm])
+
+    """
     isodict = assemble_dict(in_file="/Volumes/Genome/transcriptomes/BroodSwap/controls/C16/Cuffmerge/merged.filtered.separated.gff", in_seq_file="/Volumes/Genome/Cbir.assembly.v3.0_gi.fa")
     for feature in isodict['lcl|scaffold581'].features:
         print "ID: %s\tName: %s\tType: %s\tStrand: %r" % (feature.qualifiers['ID'][0], feature.qualifiers['Name'][0], feature.type, feature.strand)
@@ -522,6 +573,7 @@ if __name__ == '__main__':
                 print "Longest Prot: %s\tLength: %d" % (longestSeq[0:10], len(longestSeq))
 
     #print subfeat.qualifiers
+    """
 
 
     """
