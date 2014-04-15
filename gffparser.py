@@ -122,20 +122,23 @@ def parse_names(genelist, gffobj):
     
     for scaf in gffobj:
         for feature in gffobj[scaf].features:
-            namedict[feature.qualifiers['ID']] = feature.qualifiers['Name']
-
+            try:
+                namedict[feature.qualifiers['ID'][0]] = feature.qualifiers['Name'][0]
+            except:
+                #print feature.qualifiers['ID']
+                namedict[feature.qualifiers['ID'][0]] = feature.qualifiers['ID'][0]
     
     ## Pull out names from supplied gene list:
     output_dict = {}
-    if type(gene) == list:
-        for g in gene:
+    if type(genelist) == list:
+        for g in genelist:
             try:
                 output_dict[g] = namedict[g]
             except KeyError:
                 print g, "was not found."
     else:
         try:
-            output_dict[gene] = namedict[gene]
+            output_dict[genelist] = namedict[genelist]
         except KeyError:
             print gene, "was not found."
 
@@ -333,8 +336,8 @@ def parse_go(gene, gofile='/Volumes/Genome/Genome_analysis/Gene_Ontology/armyant
             if rego is not None and defgo is not None:
                 go_dict[columnset[0]][rego.group()] = defgo.group().split(';')
 
-    for element in go_dict:
-        print element, go_dict[element]
+    #for element in go_dict:
+    #    print element, go_dict[element]
 
     #determine if one gene or many:
     output_dict = {}
@@ -344,6 +347,7 @@ def parse_go(gene, gofile='/Volumes/Genome/Genome_analysis/Gene_Ontology/armyant
                 output_dict[g] = go_dict[g]
             except KeyError:
                 print g, "was not found."
+                output_dict[g] = {"GO:######":("None listed","None listed")}
     else:
         try:
             output_dict[gene] = go_dict[gene]
@@ -586,7 +590,10 @@ if __name__ == '__main__':
         #print "number of GO terms: ", len(gene)
         for goterm in genegos[gene]:
             #print goterm
-            print "%-12s%-12s%-20s%s\t%s" % (gene, goterm, genegos[gene][goterm][1], genegos[gene][goterm][0] , genenames[gene])
+            try:
+                print "%-12s%-12s%-20s%-50s\t%s" % (gene, goterm, genegos[gene][goterm][1], genegos[gene][goterm][0] , genenames[gene])
+            except:
+                print gene, "not found"
 
     """
     isodict = assemble_dict(in_file="/Volumes/Genome/transcriptomes/BroodSwap/controls/C16/Cuffmerge/merged.filtered.separated.gff", in_seq_file="/Volumes/Genome/Cbir.assembly.v3.0_gi.fa")
