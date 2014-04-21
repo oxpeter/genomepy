@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import numpy
 from scipy import stats
 
-import GFFparser as gp
+import gffparser as gp
 import qvalue
 
 ########################################################################################
@@ -80,7 +80,8 @@ def binomial_prob(all1, all2, cumulative=True):
             else:
                 print "Could not calculate. n = %d\tnCr = %d\texp = %e" % (n, nCr, exp)
                 Prob = None
-
+        cumsum = Prob
+        
     return cumsum
 
 def find_ratios(file1):
@@ -408,6 +409,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Parses VCF files. To perform allele ratio test, first run on each VCF file seperately.")
     parser.add_argument("vcf_file", type=str, help="The VCF file for parsing")
     parser.add_argument("-C", "--cat", type=str, dest="category", default='DP4', help="Specify the category to parse")
+    parser.add_argument("-B", "--binomial_test", action='store_true', dest="binary", default=False, help="Perform binomial probability test of allele ratios")
+    parser.add_argument("-F", "--fishers_test", action='store_true', dest="fishers", default=False, help="Perform Fisher's Exact Test on allele ratios")
     parser.add_argument("-r", "--ratios", type=str, dest="ratio_file", default=False, help="second vcf file for comparing allele ratios using Fisher's Exact test\n(Requires vcf_results.list files)")
     args = parser.parse_args()
 
@@ -423,16 +426,18 @@ if __name__ == '__main__':
 
 
         ## FISHERS EXACT TEST:
-        #all_loci = compare_allele_ratios(args.vcf_file, args.ratio_file, gff_obj)
-        #print "%d loci found." % (len(all_loci))
-        #newfile = args.vcf_file + "_sig_loci.fishers.list"
-        #fishers_output(all_loci, newfile)
-        #print "### Fisher's Exact Test analysis complete ###\n"
+        if args.fishers:
+        all_loci = compare_allele_ratios(args.vcf_file, args.ratio_file, gff_obj)
+        print "%d loci found." % (len(all_loci))
+        newfile = args.vcf_file + "_sig_loci.fishers.list"
+        fishers_output(all_loci, newfile)
+        print "### Fisher's Exact Test analysis complete ###\n"
 
-        ## BINARY ANALYSIS:
+        ## BINOMIAL ANALYSIS:
+        if args.binomial:
         all_loci = compare_allele_ratios_binomial(args.vcf_file, args.ratio_file, gff_obj, makeplot=True)
         print "%d loci found." % (len(all_loci))
-        newfile = args.vcf_file + "_sig_loci.binary.list"
+        newfile = args.vcf_file + "_sig_loci.binomial.list"
         binary_out(all_loci, newfile)
         print "### Binary Test analysis complete ###\n"
 
