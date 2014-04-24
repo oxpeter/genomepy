@@ -72,6 +72,35 @@ class My_gff(object):
 
         return ingene
 
+class GO_maker(object):
+    "an object for quick access to all GO terms for a gene set"
+    def __init__(self, gofile):
+
+        self.go_dict = {}
+        go_handle = open(gofile, 'rb')
+        columns = [ line.split('\t') for line in go_handle ]
+        for columnset in columns:
+            self.go_dict[columnset[0]] = {}
+            for element in columnset[2:]:
+                gopattern = "GO:([0-9]*)"
+                defpattern = "[a-z].*"
+                rego = re.search(gopattern, element)
+                defgo = re.search(defpattern, element)
+                if rego is not None and defgo is not None:
+                    defline = defgo.group().split(';')
+                    gotype = defline[1].split(' ')[1][0] + defline[1].split(' ')[2][0]
+                    godef =  defline[0]
+                    self.go_dict[columnset[0]][rego.group()] =  (godef, gotype)
+
+    def findem(self, geneid):
+        "given a gene, return the GO terms associated with it"
+        try:
+            output_dict = self.go_dict[geneid]
+        except KeyError:
+            #print gene, "was not found."
+            output_dict = {"GO:######":("None listed","None listed")}
+
+        return output_dict
 
 ####### FUNCTIONS ############################################################
 
@@ -676,8 +705,12 @@ if __name__ == '__main__':
     print "assembling gffobj..."
     gffobj = assemble_dict(in_file="/Volumes/Genome/armyant.OGS.V1.8.6_lcl.gff", in_seq_file="/Volumes/Genome/Cbir.assembly.v3.0_gi.fa")
 
+    print "assembling intronchecker..."
     intronchecker = My_gff("/Volumes/Genome/armyant.OGS.V1.8.6_lcl.gff")
     print "Intron checker gff created:", intronchecker
+
+    print "assembling go monster..."
+    go_monster = GO_maker('/Volumes/Genome/Genome_analysis/Gene_Ontology/armyant.OGS.V1.5.GOterms.list')
 
     out_h = open('/Volumes/Genome/methylation/sequencing_data/Alignments/WGBS/C1F/cpg.DNA_C1F.mincov10.list', 'w')
     out_h.write( "%-14s%-6s%-12s%-5s%-7s%-5s" % ("scaf", "posn", "gene_id", "exon", "cds_pos", "codon_str") )
@@ -705,29 +738,29 @@ if __name__ == '__main__':
         if SNPdict["gene_id"] is not None:
             scaf = line.split()[1]
             posn = int(line.split()[2])
-            genegos = parse_go(SNPdict["gene_id"])
-            # genegos[gene] = {"GO:######":("GO function","GO definition")}
+            genegos = go_monster.findem(SNPdict["gene_id"])  # was... parse_go(SNPdict["gene_id"])
+            # genegos = {"GO:######":("GO function","GO definition")}
 
             out_h = open('/Volumes/Genome/methylation/sequencing_data/Alignments/WGBS/C1F/cpg.DNA_C1F.mincov10.list', 'a')
             out_h.write( "%-14s%-6d%-4s%-6s%-8s%-8s" % (scaf,posn,strand,coverage,freqC,freqT) \
                 + "%(gene_id)-12s%(exon)-4d%(cds_pos)-5d%(codon_str)-5s" % (SNPdict) \
-                + "   ".join([ g + " " + genegos[SNPdict["gene_id"]][g][0] for g in genegos[SNPdict["gene_id"]] ]) + "\n" )
+                + "   ".join([ g + " " + genegos[g][1] + " " + genegos[g][0] for g in genegos ]) + "\n" )
             out_h.close()
         else:
             # find out if SNP is in an intron:
             ingene = intronchecker.gene((scaf, posn))
 
             if ingene: # ie, SNP lies on an intron of a gene
-                genegos = parse_go(SNPdict["gene_id"])
+                genegos = go_monster.findem(SNPdict["gene_id"])
                 out_h = open('/Volumes/Genome/methylation/sequencing_data/Alignments/WGBS/C1F/cpg.DNA_C1F.mincov10.list', 'a')
                 out_h.write( "%-14s%-6d%-4s%-6s%-8s%-8s" % (scaf,posn,strand,coverage,freqC,freqT) \
                     + "%-12s%-4d%-5s%-5s" % (ingene, 0, 'n/a', 'n/a' ) \
-                    + "   ".join([ g + " " + genegos[SNPdict["gene_id"]][g][1] + " " + genegos[SNPdict["gene_id"]][g][0] for g in genegos[SNPdict["gene_id"]] ]) + "\n" )
+                    + "   ".join([ g + " " + genegos[g][1] + " " + genegos[g][0] for g in genegos ]) + "\n" )
                 out_h.close()
             else:
                 out_h = open('/Volumes/Genome/methylation/sequencing_data/Alignments/WGBS/C1F/cpg.DNA_C1F.mincov10.list', 'a')
                 out_h.write( "%-14s%-6d%-4s%-6s%-8s%-8s" % (scaf,posn,strand,coverage,freqC,freqT) \
-                    + "%-12s%-4d%-5s%-5s\n" % ("Intragenic", -1, 'n/a', 'n/a' ) )
+                    + "%-12s%-4d%-5s%-5s\n" % ("Intergenic", -1, 'n/a', 'n/a' ) )
                 out_h.close()
 
 
