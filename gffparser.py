@@ -11,12 +11,69 @@ from Bio import SeqIO
 from Bio.Alphabet import generic_dna, IUPAC
 from Bio.Seq import Seq
 from Bio.SeqFeature import SeqFeature, FeatureLocation
-from reportlab.lib import colors
-from reportlab.lib.units import cm
+#from reportlab.lib import colors
+#from reportlab.lib.units import cm
 from Bio.Graphics import GenomeDiagram
 
 import gff2bed2
 
+####### CLASSES ############################################################
+
+class My_gff(object):
+    "an object for quick assessment of where a SNP lies"
+    def __init__(self, gff_file):
+
+        self.genedict = {}
+        self.genecount = 0
+
+        gff_h = open(gff_file,'rb')
+        for line in gff_h:
+            if line.split()[2] == 'mRNA':
+                self.genecount += 1
+                scaf = line.split()[0]
+                start = min(line.split()[3], line.split()[4])
+                stop = max(line.split()[3], line.split()[4])
+                geneid = re.search('ID=(.*);', line.split()[8]).group()[0]
+
+                if scaf in self.genedict:
+                    self.genedict[scaf][geneid] = (start, stop)
+                else:
+                    self.genedict[scaf] = {geneid:(start, stop)}
+
+    def __contains__(self, locus):
+        scaf, posn = locus
+        ingene = False
+        try:
+            for gene in self.genedict[scaf]:
+                if self.genedict[scaf][gene][0] <= posn <= self.genedict[scaf][gene][1]:
+                    ingene = True
+        except KeyError:
+            ingene = False
+
+        return ingene
+
+    def __str__(self):
+        return "%d scaffolds, %d genes" % (len(self.genedict),self.genecount)
+
+    __repr__ = __str__
+
+    def __len__(self):
+        return (self.genecount)
+
+    def gene(self, locus):
+        scaf, posn = locus
+        ingene = False
+        try:
+            for gene in self.genedict[scaf]:
+                if self.genedict[scaf][gene][0] <= posn <= self.genedict[scaf][gene][1]:
+                    ingene = gene
+        except KeyError:
+            ingene = None
+
+        return ingene
+
+
+####### FUNCTIONS ############################################################
 
 ##### FILE MANIPULATION #####
 
@@ -58,6 +115,43 @@ def unpickle_gtypes(fname='pickle'):
     ipicklefile.close()
 
     return lineage_gtypes, indiv_gtypes
+
+def file_block(filehandle,  block, number_of_blocks=1000):
+    """
+    This code adapted from:
+    http://xor0110.wordpress.com/2013/04/13/how-to-read-a-chunk-of-lines-from-a-file-in-python/
+
+    Written by Nic Werneck
+
+    A generator that splits a file into blocks and iterates
+    over the lines of one of the blocks.
+
+    usage:
+    filehandle = open(filename)
+    number_of_chunks = 100
+    for chunk_number in range(number_of_chunks):
+        for line in file_block(filehandle, number_of_chunks, chunk_number):
+            process(line)
+    """
+
+
+    assert 0 <= block and block < number_of_blocks
+    assert 0 < number_of_blocks
+
+    filehandle.seek(0,2)
+    file_size = filehandle.tell()
+
+    ini = file_size * block / number_of_blocks
+    end = file_size * (1 + block) / number_of_blocks
+
+    if ini <= 0:
+        filehandle.seek(0)
+    else:
+        filehandle.seek(ini-1)
+        filehandle.readline()
+
+    while filehandle.tell() < end:
+        yield filehandle.readline()
 
 
 ##### FILE CONVERSIONS #####
@@ -116,10 +210,10 @@ def make_bed(gff_file):
 ##### GFF FILE MANIPULATION #####
 
 def parse_names(genelist, gffobj):
-    "takes a gene or list of genes and returns the gene name from the gff file"
+    "takes a gene ID or list of gene IDs and returns the gene name from the gff file"
     ## Create dictionary of gene ids and their corresponding names:
     namedict = {}
-    
+
     for scaf in gffobj:
         for feature in gffobj[scaf].features:
             try:
@@ -127,7 +221,7 @@ def parse_names(genelist, gffobj):
             except:
                 #print feature.qualifiers['ID']
                 namedict[feature.qualifiers['ID'][0]] = feature.qualifiers['ID'][0]
-    
+
     ## Pull out names from supplied gene list:
     output_dict = {}
     if type(genelist) == list:
@@ -205,6 +299,7 @@ def isolate_mRNA(gff_p):
     gff_h.close()
     newfile_h.close()
     return newfile
+
 
 
 ##### SEQRECORD FUNCTIONS #####
@@ -334,7 +429,11 @@ def parse_go(gene, gofile='/Volumes/Genome/Genome_analysis/Gene_Ontology/armyant
             rego = re.search(gopattern, element)
             defgo = re.search(defpattern, element)
             if rego is not None and defgo is not None:
-                go_dict[columnset[0]][rego.group()] = defgo.group().split(';')
+                defline = defgo.group().split(';')
+                #print defline
+                gotype = defline[1].split(' ')[1][0] + defline[1].split(' ')[1][1]
+                godef =  defline[0]
+                go_dict[columnset[0]][rego.group()] =  (godef, gotype)
 
     #for element in go_dict:
     #    print element, go_dict[element]
@@ -346,14 +445,14 @@ def parse_go(gene, gofile='/Volumes/Genome/Genome_analysis/Gene_Ontology/armyant
             try:
                 output_dict[g] = go_dict[g]
             except KeyError:
-                print g, "was not found."
+                #print g, "was not found."
                 output_dict[g] = {"GO:######":("None listed","None listed")}
     else:
         try:
             output_dict[gene] = go_dict[gene]
         except KeyError:
-            print gene, "was not found."
-
+            #print gene, "was not found."
+            output_dict[gene] = {"GO:######":("None listed","None listed")}
     return output_dict
 
 
@@ -574,27 +673,111 @@ def separate_cuffjoined(gtf_file, dblid):
 
 if __name__ == '__main__':
 
-    gffobj = assemble_dict()
-    
+    print "assembling gffobj..."
+    gffobj = assemble_dict(in_file="/Volumes/Genome/armyant.OGS.V1.8.6_lcl.gff", in_seq_file="/Volumes/Genome/Cbir.assembly.v3.0_gi.fa")
 
-    deg_h = open('/Volumes/Genome/RNA_editing/cuffdiff_romain/pcombined.tmp', 'rb')
-    genelist = []
+    intronchecker = My_gff("/Volumes/Genome/armyant.OGS.V1.8.6_lcl.gff")
+    print "Intron checker gff created:", intronchecker
+
+    out_h = open('/Volumes/Genome/methylation/sequencing_data/Alignments/WGBS/C1F/cpg.DNA_C1F.mincov10.list', 'w')
+    out_h.write( "%-14s%-6s%-12s%-5s%-7s%-5s" % ("scaf", "posn", "gene_id", "exon", "cds_pos", "codon_str") )
+    out_h.close()
+
+    print "extracting SNP information"
+    deg_h = open('/Volumes/Genome/methylation/sequencing_data/Alignments/WGBS/C1F/cpg.DNA_C1F.mincov10.txt', 'rb')
+
+    deg_h.next()
+    count = 0
     for line in deg_h:
-        genelist.append(line.split()[0])
+        count += 1
+        if count % 10000 == 0:
+            print count, "lines processed."
+        scaf = line.split()[1]
+        posn = int(line.split()[2])
+        strand = line.split()[3]
+        coverage = line.split()[4]
+        freqC = line.split()[5]
+        freqT = line.split()[6]
 
-    genenames = parse_names(genelist, gffobj)
-    
-    genegos = parse_go(genelist)
-    #print "genegos length", len(genegos)
-    for gene in genegos:
-        #print "number of GO terms: ", len(gene)
-        for goterm in genegos[gene]:
-            #print goterm
-            try:
-                print "%-12s%-12s%-20s%-50s\t%s" % (gene, goterm, genegos[gene][goterm][1], genegos[gene][goterm][0] , genenames[gene])
-            except:
-                print gene, "not found"
+        SNPdict = snp_in_gene(scaf, posn, gffobj)
+        # SNP_dict = {"gene_id":None, "gene_name":None, "cds_pos":None, "exon":None, "codon":None, 'codon_str':None, "frame":None, "ref_nt":None, 'ref_nt_str':None}
 
+        if SNPdict["gene_id"] is not None:
+            scaf = line.split()[1]
+            posn = int(line.split()[2])
+            genegos = parse_go(SNPdict["gene_id"])
+            # genegos[gene] = {"GO:######":("GO function","GO definition")}
+
+            out_h = open('/Volumes/Genome/methylation/sequencing_data/Alignments/WGBS/C1F/cpg.DNA_C1F.mincov10.list', 'a')
+            out_h.write( "%-14s%-6d%-4s%-6s%-8s%-8s" % (scaf,posn,strand,coverage,freqC,freqT) \
+                + "%(gene_id)-12s%(exon)-4d%(cds_pos)-5d%(codon_str)-5s" % (SNPdict) \
+                + "   ".join([ g + " " + genegos[SNPdict["gene_id"]][g][0] for g in genegos[SNPdict["gene_id"]] ]) + "\n" )
+            out_h.close()
+        else:
+            # find out if SNP is in an intron:
+            ingene = intronchecker.gene((scaf, posn))
+
+            if ingene: # ie, SNP lies on an intron of a gene
+                genegos = parse_go(SNPdict["gene_id"])
+                out_h = open('/Volumes/Genome/methylation/sequencing_data/Alignments/WGBS/C1F/cpg.DNA_C1F.mincov10.list', 'a')
+                out_h.write( "%-14s%-6d%-4s%-6s%-8s%-8s" % (scaf,posn,strand,coverage,freqC,freqT) \
+                    + "%-12s%-4d%-5s%-5s" % (ingene, 0, 'n/a', 'n/a' ) \
+                    + "   ".join([ g + " " + genegos[SNPdict["gene_id"]][g][1] + " " + genegos[SNPdict["gene_id"]][g][0] for g in genegos[SNPdict["gene_id"]] ]) + "\n" )
+                out_h.close()
+            else:
+                out_h = open('/Volumes/Genome/methylation/sequencing_data/Alignments/WGBS/C1F/cpg.DNA_C1F.mincov10.list', 'a')
+                out_h.write( "%-14s%-6d%-4s%-6s%-8s%-8s" % (scaf,posn,strand,coverage,freqC,freqT) \
+                    + "%-12s%-4d%-5s%-5s\n" % ("Intragenic", -1, 'n/a', 'n/a' ) )
+                out_h.close()
+
+
+
+
+
+
+    """
+    number_of_chunks = 1000
+    for chunk_number in range(number_of_chunks):
+        print "Chunk number ", chunk_number
+        SNPdict = {}
+        genelist = []
+        for line in file_block(deg_h, chunk_number, number_of_chunks):
+            if line.split()[1] != "chr":
+                scaf = line.split()[1]
+                posn = int(line.split()[2])
+                SNPdict[(scaf, posn)] = snp_in_gene(scaf, posn, gffobj)
+                # SNP_dict = {"gene_id":None, "gene_name":None, "cds_pos":None, "exon":None, "codon":None, 'codon_str':None, "frame":None, "ref_nt":None, 'ref_nt_str':None}
+                if SNPdict[(scaf,posn)]["gene_id"] is not None:
+                    genelist.append((scaf,posn))
+
+
+
+            genegos = parse_go(genelist)
+            # genegos[gene] = {"GO:######":("GO function","GO definition")}
+
+
+
+            out_h = open('/Volumes/Genome/methylation/sequencing_data/Alignments/WGBS/C1F/cpg.DNA_C1F.mincov10.list', 'a')
+            out_h.write( "%-14s%-6s%-12s%-4s%-5s%-5s" % ("scaf", "posn", "gene_id", "exon", "cds_pos", "codon_str") )
+            for scaf, posn in genelist:
+                out_h.write( "%-14s%-6d" % (scaf,posn) \
+                    + "%(gene_id)-12s%(exon)-4d%(cds_pos)-5d%(codon_str)-5s" % (SNPdict) \
+                    + "\t".join([ (g, genegos[SNPdict[(scaf,posn)]["gene_id"]][g][1]) for g in genegos[SNPdict[(scaf,posn)]["gene_id"]] ]) )
+            out_h.close()
+
+    deg_h.close()
+    """
+
+
+
+    """
+    for goterm in genegos[gene]:
+        #print goterm
+        try:
+            print "%-12s%-12s%-20s%-50s\t%s" % (gene, goterm, genegos[gene][goterm][1], genegos[gene][goterm][0] , genenames[gene])
+        except:
+            print gene, "not found"
+    """
     """
     isodict = assemble_dict(in_file="/Volumes/Genome/transcriptomes/BroodSwap/controls/C16/Cuffmerge/merged.filtered.separated.gff", in_seq_file="/Volumes/Genome/Cbir.assembly.v3.0_gi.fa")
     for feature in isodict['lcl|scaffold581'].features:
