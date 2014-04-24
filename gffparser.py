@@ -6,6 +6,7 @@ import cPickle
 import re
 import os
 
+import argparse
 from BCBio import GFF
 from Bio import SeqIO
 from Bio.Alphabet import generic_dna, IUPAC
@@ -702,22 +703,33 @@ def separate_cuffjoined(gtf_file, dblid):
 
 if __name__ == '__main__':
 
+    parser = argparse.ArgumentParser(description="Various GFF and gene-file manipulations")
+    parser.add_argument("-o", "--output_file", type=str, default="output.list", help="File to save results to")
+    parser.add_argument("-i", "--input_file", type=str,  help="File to analyse")
+    parser.add_argument("-g", "--gff_file", type=str, default="/Volumes/Genome/armyant.OGS.V1.8.6_lcl.gff", help="GFF file for analyses")
+    parser.add_argument("-f", "--genome_file", type=str, default="/Volumes/Genome/Cbir.assembly.v3.0_gi.fa", help="Genome fasta file for analyses")
+    parser.add_argument("-G", "--GO_file", type=str, default='/Volumes/Genome/Genome_analysis/Gene_Ontology/armyant.OGS.V1.5.GOterms.list', help="GO file for analyses")
+
+    args = parser.parse_args()
+
+
+
     print "assembling gffobj..."
-    gffobj = assemble_dict(in_file="/Volumes/Genome/armyant.OGS.V1.8.6_lcl.gff", in_seq_file="/Volumes/Genome/Cbir.assembly.v3.0_gi.fa")
+    gffobj = assemble_dict(in_file=args.gff_file, in_seq_file=args.genome_file)
 
     print "assembling intronchecker..."
-    intronchecker = My_gff("/Volumes/Genome/armyant.OGS.V1.8.6_lcl.gff")
+    intronchecker = My_gff(args.gff_file)
     print "Intron checker gff created:", intronchecker
 
     print "assembling go monster..."
-    go_monster = GO_maker('/Volumes/Genome/Genome_analysis/Gene_Ontology/armyant.OGS.V1.5.GOterms.list')
+    go_monster = GO_maker(args.GO_file)
 
-    out_h = open('/Volumes/Genome/methylation/sequencing_data/Alignments/WGBS/C1F/cpg.DNA_C1F.mincov10.list', 'w')
+    out_h = open(args.output_file, 'w')
     out_h.write( "%-14s%-6s%-12s%-5s%-7s%-5s" % ("scaf", "posn", "gene_id", "exon", "cds_pos", "codon_str") )
     out_h.close()
 
     print "extracting SNP information"
-    deg_h = open('/Volumes/Genome/methylation/sequencing_data/Alignments/WGBS/C1F/cpg.DNA_C1F.mincov10.txt', 'rb')
+    deg_h = open(args.input_file, 'rb')
 
     deg_h.next()
     count = 0
@@ -741,7 +753,7 @@ if __name__ == '__main__':
             genegos = go_monster.findem(SNPdict["gene_id"])  # was... parse_go(SNPdict["gene_id"])
             # genegos = {"GO:######":("GO function","GO definition")}
 
-            out_h = open('/Volumes/Genome/methylation/sequencing_data/Alignments/WGBS/C1F/cpg.DNA_C1F.mincov10.list', 'a')
+            out_h = open(args.output_file, 'a')
             out_h.write( "%-14s%-6d%-4s%-6s%-8s%-8s" % (scaf,posn,strand,coverage,freqC,freqT) \
                 + "%(gene_id)-12s%(exon)-4d%(cds_pos)-5d%(codon_str)-5s" % (SNPdict) \
                 + "   ".join([ g + " " + genegos[g][1] + " " + genegos[g][0] for g in genegos ]) + "\n" )
@@ -752,13 +764,13 @@ if __name__ == '__main__':
 
             if ingene: # ie, SNP lies on an intron of a gene
                 genegos = go_monster.findem(SNPdict["gene_id"])
-                out_h = open('/Volumes/Genome/methylation/sequencing_data/Alignments/WGBS/C1F/cpg.DNA_C1F.mincov10.list', 'a')
+                out_h = open(args.output_file, 'a')
                 out_h.write( "%-14s%-6d%-4s%-6s%-8s%-8s" % (scaf,posn,strand,coverage,freqC,freqT) \
                     + "%-12s%-4d%-5s%-5s" % (ingene, 0, 'n/a', 'n/a' ) \
                     + "   ".join([ g + " " + genegos[g][1] + " " + genegos[g][0] for g in genegos ]) + "\n" )
                 out_h.close()
             else:
-                out_h = open('/Volumes/Genome/methylation/sequencing_data/Alignments/WGBS/C1F/cpg.DNA_C1F.mincov10.list', 'a')
+                out_h = open(args.output_file, 'a')
                 out_h.write( "%-14s%-6d%-4s%-6s%-8s%-8s" % (scaf,posn,strand,coverage,freqC,freqT) \
                     + "%-12s%-4d%-5s%-5s\n" % ("Intergenic", -1, 'n/a', 'n/a' ) )
                 out_h.close()
