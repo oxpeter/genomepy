@@ -26,6 +26,7 @@ class My_gff(object):
 
         self.genedict = {}
         self.genecount = 0
+        self.geneids = {}
 
         gff_h = open(gff_file,'rb')
         for line in gff_h:
@@ -34,8 +35,12 @@ class My_gff(object):
                 scaf = line.split()[0]
                 start = min(line.split()[3], line.split()[4])
                 stop = max(line.split()[3], line.split()[4])
-                geneid = re.search('ID=(.*);', line.split()[8]).group()[0]
-
+                geneid = re.search('ID=([^;]*);', line.split('\t')[8]).groups()[0]
+                try:
+                    genename = re.search('Name=([^;]*);', line.split('\t')[8]).groups()[0]
+                except:
+                    genename = "No_ortholog"
+                self.geneids[geneid] = genename
                 if scaf in self.genedict:
                     self.genedict[scaf][geneid] = (start, stop)
                 else:
@@ -72,6 +77,9 @@ class My_gff(object):
             ingene = None
 
         return ingene
+
+    def nameit(self, geneid):
+        return self.geneids[geneid]
 
 class GO_maker(object):
     "an object for quick access to all GO terms for a gene set"
@@ -349,6 +357,10 @@ def show_features(gff_dict, scaf):
             print "%s\t%s" % (feature.qualifiers['Name'][0], feature.location)
         except KeyError:
             print feature.location
+
+def gene_info(gff_dict, geneid):
+    'returns salient features of a given gene'
+
 
 def snp_in_gene(scaf, pos, gff_dict):
     """returns salient features of a given SNP.
@@ -709,71 +721,89 @@ if __name__ == '__main__':
     parser.add_argument("-g", "--gff_file", type=str, default="/Volumes/Genome/armyant.OGS.V1.8.6_lcl.gff", help="GFF file for analyses")
     parser.add_argument("-f", "--genome_file", type=str, default="/Volumes/Genome/Cbir.assembly.v3.0_gi.fa", help="Genome fasta file for analyses")
     parser.add_argument("-G", "--GO_file", type=str, default='/Volumes/Genome/Genome_analysis/Gene_Ontology/armyant.OGS.V1.5.GOterms.list', help="GO file for analyses")
-
+    parser.add_argument("-I", "--investigate", action='store_true',  help="analyse a list of genes")
     args = parser.parse_args()
 
+    if args.investigate:
+        #gffobj = assemble_dict(in_file=args.gff_file, in_seq_file=args.genome_file)
+        print "assembling monster"
+        go_monster = GO_maker(args.GO_file)
+        print "assembing my gff"
+        mygff = My_gff(args.gff_file)
+        genefile_h = open(args.input_file, 'rb')
+        genelist = [ line.split()[0] for line in genefile_h]
+        genefile_h.close()
 
+        reportfile_h = open(args.output_file, 'w')
 
-    print "assembling gffobj..."
-    gffobj = assemble_dict(in_file=args.gff_file, in_seq_file=args.genome_file)
+        for gene in genelist:
+            genegos = go_monster.findem(gene)
+            genename = mygff.nameit(gene)
+            reportfile_h.write("%-12s%-50s" % (gene, genename ) \
+                + "   ".join([ g + " " + genegos[g][1] + " " + genegos[g][0] for g in genegos ]) + "\n" )
+        reportfile_h.close()
 
-    print "assembling intronchecker..."
-    intronchecker = My_gff(args.gff_file)
-    print "Intron checker gff created:", intronchecker
+    else:   # need to put this into a function! But carry over all file links.
+        print "assembling gffobj..."
+        gffobj = assemble_dict(in_file=args.gff_file, in_seq_file=args.genome_file)
 
-    print "assembling go monster..."
-    go_monster = GO_maker(args.GO_file)
+        print "assembling intronchecker..."
+        intronchecker = My_gff(args.gff_file)
+        print "Intron checker gff created:", intronchecker
 
-    out_h = open(args.output_file, 'w')
-    out_h.write( "%-14s%-6s%-12s%-5s%-7s%-5s" % ("scaf", "posn", "gene_id", "exon", "cds_pos", "codon_str") )
-    out_h.close()
+        print "assembling go monster..."
+        go_monster = GO_maker(args.GO_file)
 
-    print "extracting SNP information"
-    deg_h = open(args.input_file, 'rb')
+        out_h = open(args.output_file, 'w')
+        out_h.write( "%-14s%-6s%-12s%-5s%-7s%-5s" % ("scaf", "posn", "gene_id", "exon", "cds_pos", "codon_str") )
+        out_h.close()
 
-    deg_h.next()
-    count = 0
-    for line in deg_h:
-        count += 1
-        if count % 10000 == 0:
-            print count, "lines processed."
-        scaf = line.split()[1]
-        posn = int(line.split()[2])
-        strand = line.split()[3]
-        coverage = line.split()[4]
-        freqC = line.split()[5]
-        freqT = line.split()[6]
+        print "extracting SNP information"
+        deg_h = open(args.input_file, 'rb')
 
-        SNPdict = snp_in_gene(scaf, posn, gffobj)
-        # SNP_dict = {"gene_id":None, "gene_name":None, "cds_pos":None, "exon":None, "codon":None, 'codon_str':None, "frame":None, "ref_nt":None, 'ref_nt_str':None}
-
-        if SNPdict["gene_id"] is not None:
+        deg_h.next()
+        count = 0
+        for line in deg_h:
+            count += 1
+            if count % 10000 == 0:
+                print count, "lines processed."
             scaf = line.split()[1]
             posn = int(line.split()[2])
-            genegos = go_monster.findem(SNPdict["gene_id"])  # was... parse_go(SNPdict["gene_id"])
-            # genegos = {"GO:######":("GO function","GO definition")}
+            strand = line.split()[3]
+            coverage = line.split()[4]
+            freqC = line.split()[5]
+            freqT = line.split()[6]
 
-            out_h = open(args.output_file, 'a')
-            out_h.write( "%-14s%-6d%-4s%-6s%-8s%-8s" % (scaf,posn,strand,coverage,freqC,freqT) \
-                + "%(gene_id)-12s%(exon)-4d%(cds_pos)-5d%(codon_str)-5s" % (SNPdict) \
-                + "   ".join([ g + " " + genegos[g][1] + " " + genegos[g][0] for g in genegos ]) + "\n" )
-            out_h.close()
-        else:
-            # find out if SNP is in an intron:
-            ingene = intronchecker.gene((scaf, posn))
+            SNPdict = snp_in_gene(scaf, posn, gffobj)
+            # SNP_dict = {"gene_id":None, "gene_name":None, "cds_pos":None, "exon":None, "codon":None, 'codon_str':None, "frame":None, "ref_nt":None, 'ref_nt_str':None}
 
-            if ingene: # ie, SNP lies on an intron of a gene
-                genegos = go_monster.findem(SNPdict["gene_id"])
+            if SNPdict["gene_id"] is not None:
+                scaf = line.split()[1]
+                posn = int(line.split()[2])
+                genegos = go_monster.findem(SNPdict["gene_id"])  # was... parse_go(SNPdict["gene_id"])
+                # genegos = {"GO:######":("GO function","GO definition")}
+
                 out_h = open(args.output_file, 'a')
                 out_h.write( "%-14s%-6d%-4s%-6s%-8s%-8s" % (scaf,posn,strand,coverage,freqC,freqT) \
-                    + "%-12s%-4d%-5s%-5s" % (ingene, 0, 'n/a', 'n/a' ) \
+                    + "%(gene_id)-12s%(exon)-4d%(cds_pos)-5d%(codon_str)-5s" % (SNPdict) \
                     + "   ".join([ g + " " + genegos[g][1] + " " + genegos[g][0] for g in genegos ]) + "\n" )
                 out_h.close()
             else:
-                out_h = open(args.output_file, 'a')
-                out_h.write( "%-14s%-6d%-4s%-6s%-8s%-8s" % (scaf,posn,strand,coverage,freqC,freqT) \
-                    + "%-12s%-4d%-5s%-5s\n" % ("Intergenic", -1, 'n/a', 'n/a' ) )
-                out_h.close()
+                # find out if SNP is in an intron:
+                ingene = intronchecker.gene((scaf, posn))
+
+                if ingene: # ie, SNP lies on an intron of a gene
+                    genegos = go_monster.findem(SNPdict["gene_id"])
+                    out_h = open(args.output_file, 'a')
+                    out_h.write( "%-14s%-6d%-4s%-6s%-8s%-8s" % (scaf,posn,strand,coverage,freqC,freqT) \
+                        + "%-12s%-4d%-5s%-5s" % (ingene, 0, 'n/a', 'n/a' ) \
+                        + "   ".join([ g + " " + genegos[g][1] + " " + genegos[g][0] for g in genegos ]) + "\n" )
+                    out_h.close()
+                else:
+                    out_h = open(args.output_file, 'a')
+                    out_h.write( "%-14s%-6d%-4s%-6s%-8s%-8s" % (scaf,posn,strand,coverage,freqC,freqT) \
+                        + "%-12s%-4d%-5s%-5s\n" % ("Intergenic", -1, 'n/a', 'n/a' ) )
+                    out_h.close()
 
 
 
