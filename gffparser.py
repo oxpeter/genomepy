@@ -755,7 +755,7 @@ if __name__ == '__main__':
         go_monster = GO_maker(args.GO_file)
 
         out_h = open(args.output_file, 'w')
-        out_h.write( "%-20s%-10s%-7s%-10s%-6s%-6s%-12s%-5s%-7s%-5s\n" % ("scaf", "posn","strand","coverage","freqC", "freqT", "gene_id", "exon", "cds_pos", "codon_str") )
+        out_h.write( "%-20s%-10s%-7s%-10s%-6s%-6s%-12s%-5s%-8s%-5s\n" % ("scaf", "posn","strand","coverage","freqC", "freqT", "gene_id", "exon", "cds_pos", "codon_str") )
         out_h.close()
 
         print "extracting SNP information"
@@ -774,9 +774,9 @@ if __name__ == '__main__':
             freqC = line.split()[5]
             freqT = line.split()[6]
 
+
             SNPdict = snp_in_gene(scaf, posn, gffobj)
             # SNP_dict = {"gene_id":None, "gene_name":None, "cds_pos":None, "exon":None, "codon":None, 'codon_str':None, "frame":None, "ref_nt":None, 'ref_nt_str':None}
-
             if SNPdict["gene_id"] is not None:
                 scaf = line.split()[1]
                 posn = int(line.split()[2])
@@ -791,17 +791,16 @@ if __name__ == '__main__':
             else:
                 # find out if SNP is in an intron:
                 ingene = intronchecker.gene((scaf, posn))
-
                 if ingene: # ie, SNP lies on an intron of a gene
                     genegos = go_monster.findem(SNPdict["gene_id"])
                     out_h = open(args.output_file, 'a')
-                    out_h.write( "%-14s%-6d%-4s%-6s%-8s%-8s" % (scaf,posn,strand,coverage,freqC,freqT) \
+                    out_h.write( "%-20s%-10d%-4s%-6s%-8s%-8s" % (scaf,posn,strand,coverage,freqC,freqT) \
                         + "%-12s%-4d%-5s%-5s" % (ingene, 0, 'n/a', 'n/a' ) \
                         + "   ".join([ g + " " + genegos[g][1] + " " + genegos[g][0] for g in genegos ]) + "\n" )
                     out_h.close()
                 else:
                     out_h = open(args.output_file, 'a')
-                    out_h.write( "%-14s%-6d%-4s%-6s%-8s%-8s" % (scaf,posn,strand,coverage,freqC,freqT) \
+                    out_h.write( "%-20s%-10d%-4s%-6s%-8s%-8s" % (scaf,posn,strand,coverage,freqC,freqT) \
                         + "%-12s%-4d%-5s%-5s\n" % ("Intergenic", -1, 'n/a', 'n/a' ) )
                     out_h.close()
 
