@@ -755,7 +755,7 @@ if __name__ == '__main__':
         go_monster = GO_maker(args.GO_file)
 
         out_h = open(args.output_file, 'w')
-        out_h.write( "%-14s%-6s%-12s%-5s%-7s%-5s" % ("scaf", "posn", "gene_id", "exon", "cds_pos", "codon_str") )
+        out_h.write( "%-20s%-10s%-7s%-10s%-6s%-6s%-12s%-5s%-7s%-5s\n" % ("scaf", "posn","strand","coverage","freqC", "freqT", "gene_id", "exon", "cds_pos", "codon_str") )
         out_h.close()
 
         print "extracting SNP information"
@@ -784,7 +784,7 @@ if __name__ == '__main__':
                 # genegos = {"GO:######":("GO function","GO definition")}
 
                 out_h = open(args.output_file, 'a')
-                out_h.write( "%-14s%-6d%-4s%-6s%-8s%-8s" % (scaf,posn,strand,coverage,freqC,freqT) \
+                out_h.write( "%-20s%-10d%-4s%-6s%-8s%-8s" % (scaf,posn,strand,coverage,freqC,freqT) \
                     + "%(gene_id)-12s%(exon)-4d%(cds_pos)-5d%(codon_str)-5s" % (SNPdict) \
                     + "   ".join([ g + " " + genegos[g][1] + " " + genegos[g][0] for g in genegos ]) + "\n" )
                 out_h.close()
