@@ -33,8 +33,8 @@ class My_gff(object):
             if line.split()[2] == 'mRNA':
                 self.genecount += 1
                 scaf = line.split()[0]
-                start = min(line.split()[3], line.split()[4])
-                stop = max(line.split()[3], line.split()[4])
+                start = min(int(line.split()[3]), int(line.split()[4]))
+                stop = max(int(line.split()[3]), int(line.split()[4]))
                 geneid = re.search('ID=([^;]*);', line.split('\t')[8]).groups()[0]
                 try:
                     genename = re.search('Name=([^;]*);', line.split('\t')[8]).groups()[0]
@@ -791,6 +791,7 @@ if __name__ == '__main__':
             else:
                 # find out if SNP is in an intron:
                 ingene = intronchecker.gene((scaf, posn))
+                #print "%r" % (ingene)
                 if ingene: # ie, SNP lies on an intron of a gene
                     genegos = go_monster.findem(SNPdict["gene_id"])
                     out_h = open(args.output_file, 'a')
@@ -807,102 +808,3 @@ if __name__ == '__main__':
 
 
 
-
-
-    """
-    number_of_chunks = 1000
-    for chunk_number in range(number_of_chunks):
-        print "Chunk number ", chunk_number
-        SNPdict = {}
-        genelist = []
-        for line in file_block(deg_h, chunk_number, number_of_chunks):
-            if line.split()[1] != "chr":
-                scaf = line.split()[1]
-                posn = int(line.split()[2])
-                SNPdict[(scaf, posn)] = snp_in_gene(scaf, posn, gffobj)
-                # SNP_dict = {"gene_id":None, "gene_name":None, "cds_pos":None, "exon":None, "codon":None, 'codon_str':None, "frame":None, "ref_nt":None, 'ref_nt_str':None}
-                if SNPdict[(scaf,posn)]["gene_id"] is not None:
-                    genelist.append((scaf,posn))
-
-
-
-            genegos = parse_go(genelist)
-            # genegos[gene] = {"GO:######":("GO function","GO definition")}
-
-
-
-            out_h = open('/Volumes/Genome/methylation/sequencing_data/Alignments/WGBS/C1F/cpg.DNA_C1F.mincov10.list', 'a')
-            out_h.write( "%-14s%-6s%-12s%-4s%-5s%-5s" % ("scaf", "posn", "gene_id", "exon", "cds_pos", "codon_str") )
-            for scaf, posn in genelist:
-                out_h.write( "%-14s%-6d" % (scaf,posn) \
-                    + "%(gene_id)-12s%(exon)-4d%(cds_pos)-5d%(codon_str)-5s" % (SNPdict) \
-                    + "\t".join([ (g, genegos[SNPdict[(scaf,posn)]["gene_id"]][g][1]) for g in genegos[SNPdict[(scaf,posn)]["gene_id"]] ]) )
-            out_h.close()
-
-    deg_h.close()
-    """
-
-
-
-    """
-    for goterm in genegos[gene]:
-        #print goterm
-        try:
-            print "%-12s%-12s%-20s%-50s\t%s" % (gene, goterm, genegos[gene][goterm][1], genegos[gene][goterm][0] , genenames[gene])
-        except:
-            print gene, "not found"
-    """
-    """
-    isodict = assemble_dict(in_file="/Volumes/Genome/transcriptomes/BroodSwap/controls/C16/Cuffmerge/merged.filtered.separated.gff", in_seq_file="/Volumes/Genome/Cbir.assembly.v3.0_gi.fa")
-    for feature in isodict['lcl|scaffold581'].features:
-        print "ID: %s\tName: %s\tType: %s\tStrand: %r" % (feature.qualifiers['ID'][0], feature.qualifiers['Name'][0], feature.type, feature.strand)
-        for subfeat in feature.sub_features:
-            if subfeat.qualifiers['Name'][0] == 'Cbir_12163':
-                print "ID: %s\tName: %s\tType: %s\tParent: %s\tStrand: %r" % (subfeat.qualifiers['ID'][0], subfeat.qualifiers['Name'][0], subfeat.type, subfeat.qualifiers['Parent'], subfeat.strand)
-                mRNA_seq = get_sequence('lcl|scaffold581', isodict, subfeat)
-                print "Seq: %s\tLength: %d\tProt: %s\tLength: %d" % (mRNA_seq[0:10], len(mRNA_seq), mRNA_seq.translate()[0:10], len(mRNA_seq.translate()))
-                longestORF = 0
-                for frame in range(3):
-                    for prot in mRNA_seq[frame:].translate().split('*'):
-                        if len(prot) > longestORF:
-                            longestORF = len(prot)
-                            longestSeq = prot
-                print "Longest Prot: %s\tLength: %d" % (longestSeq[0:10], len(longestSeq))
-
-    #print subfeat.qualifiers
-    """
-
-
-    """
-    gtf_file = "/Volumes/Genome/transcriptomes/BroodSwap/controls/C16/Cuffmerge/merged.filtered.gtf"
-    dblid = find_cuffjoined(gtf_file)
-    for gene in dblid:
-        print "%s\t%s" % (gene, dblid[gene])
-    print len(dblid)
-
-    sep_gtf = separate_cuffjoined(gtf_file, dblid)
-    gtf2gff(sep_gtf)
-    """
-
-    """
-    gff_dict = assemble_dict("/Volumes/Genome/armyant.OGS.V1.8.5_lcl.gff")
-    print "GFF dictionary parsed. Writing new GFF file..."
-    create_gff(gff_dict, "/Volumes/Genome/armyant.OGS.V1.8.5_recreated.gff")
-    """
-
-    """
-    in_file = "/Users/POxley/Documents/Analysis/Data/Transcriptome/alternate_splicing/iReckon/test_files/COI.gb"
-    out_file = "/Users/POxley/Documents/Analysis/Data/Transcriptome/alternate_splicing/iReckon/test_files/COI.gff"
-    in_handle = open(in_file)
-    out_handle = open(out_file, "w")
-
-    seq_obj = SeqIO.parse(in_handle, "genbank")
-    print type(seq_obj)
-    for thing in seq_obj:
-        print thing
-        GFF.write(thing, out_handle)
-
-    in_handle.close()
-    out_handle.close()
-
-            """
