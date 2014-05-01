@@ -64,7 +64,7 @@ def write_tfs(outfile, tf_posns, tf_seqs):
 
     out_h = open(outfile, 'w')
     for tf in tf_seqs:
-        out_h.write("%d = %s\n" % (tf, tf_seqs[tf]))
+        out_h.write("%s = %s\n" % (colorme[tf], tf_seqs[tf]))
     #out_h.write(str(tf_posns))
     out_h.write("     " + "-" * 200 + '\n')
     for sample in tf_posns:
