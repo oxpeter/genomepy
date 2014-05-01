@@ -787,7 +787,7 @@ if __name__ == '__main__':
 
                 out_h = open(args.output_file, 'a')
                 out_h.write( "%-20s%-10d%-4s%-6s%-8s%-8s" % (scaf,posn,strand,coverage,freqC,freqT) \
-                    + "%(gene_id)-15s%(exon)-4d%(cds_pos)-5d%(codon_str)-5s" % (SNPdict) \
+                    + "%(gene_id)-15s%(exon)-4d%(cds_pos)-7d%(codon_str)-5s" % (SNPdict) \
                     + "   ".join([ g + " " + genegos[g][1] + " " + genegos[g][0] for g in genegos ]) + "\n" )
                 out_h.close()
             else:
@@ -798,13 +798,13 @@ if __name__ == '__main__':
                     genegos = go_monster.findem(SNPdict["gene_id"])
                     out_h = open(args.output_file, 'a')
                     out_h.write( "%-20s%-10d%-4s%-6s%-8s%-8s" % (scaf,posn,strand,coverage,freqC,freqT) \
-                        + "%-15s%-4d%-5s%-5s" % (ingene, 0, 'n/a', 'n/a' ) \
+                        + "%-15s%-4d%-7s%-5s" % (ingene, 0, 'n/a', 'n/a' ) \
                         + "   ".join([ g + " " + genegos[g][1] + " " + genegos[g][0] for g in genegos ]) + "\n" )
                     out_h.close()
                 else:
                     out_h = open(args.output_file, 'a')
                     out_h.write( "%-20s%-10d%-4s%-6s%-8s%-8s" % (scaf,posn,strand,coverage,freqC,freqT) \
-                        + "%-15s%-4d%-5s%-5s\n" % ("Intergenic", -1, 'n/a', 'n/a' ) )
+                        + "%-15s%-4d%-7s%-5s\n" % ("Intergenic", -1, 'n/a', 'n/a' ) )
                     out_h.close()
 
 
