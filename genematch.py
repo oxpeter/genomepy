@@ -169,7 +169,7 @@ def blastgene(geneseq, blasttype='blastp', db='nr'):
     """ performs a blast search on the NCBI online server for the sequence geneseq.
     Also (currently) parses result and gives top ten non-hypothetical results """
 
-    results = ncbi.qblast(blasttype, db, geneseq)
+    results = ncbi.qblast(blasttype, db, geneseq, expect=2, hitlist_size=10, entrez_query='"formicidae"[Organism]')
     parsed_results = xml.parse(results)
     p_result = parsed_results.next()
     counter = 10
