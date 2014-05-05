@@ -774,7 +774,9 @@ def methylation_analysis(args):
     for line in deg_h:
         count += 1
         if count % 10000 == 0:
-            print count, "lines processed."
+            sys.stdout.write("%d lines processed.\r" % (count) )
+            sys.stdout.flush()
+            #print count, "lines processed."
         scaf = line.split()[1]
         posn = int(line.split()[2])
         strand = line.split()[3]
