@@ -165,21 +165,28 @@ def findgene(fname):
 
     return cuffgenes
 
-def blastgene(geneseq, blasttype='blastp', db='nr'):
+def blastants(geneseq, blasttype='blastp', db='nr'):
     """ performs a blast search on the NCBI online server for the sequence geneseq.
     Also (currently) parses result and gives top ten non-hypothetical results """
 
-    results = ncbi.qblast(blasttype, db, geneseq, expect=2, hitlist_size=10, entrez_query='"formicidae"[Organism]')
-    parsed_results = xml.parse(results)
+    return ncbi.qblast(blasttype, db, geneseq, expect=2, hitlist_size=10, entrez_query='(("formicidae"[Organism]) AND "drosophila"[Organism]) AND "caenorhabditis elegans"[Organism]')
+
+def blast_results(blast_results, num_results=10):
+    parsed_results = xml.parse(blast_results)
     p_result = parsed_results.next()
-    counter = 10
+    counter = num_results
     for alignment in p_result.alignments:
         for hsp in alignment.hsps:
+            print counter, counter
+            yield (alignment,hsp)
+            """
             if re.search('hypothetical protein', alignment.title) == None:
                 print alignment.title
                 print "Score: %d\tBits: %d\tE-value: %d" % (hsp.score, hsp.bits, hsp.expect)
                 print "id: %d(%.2f%%)\t+ve: %d(%.2f%%)" % (hsp.identities, 100.0 * hsp.identities / alignment.length, hsp.positives, 100.0 * hsp.positives / alignment.length)
-                counter -= 1
+            """
+            print counter
+            counter -= 1
         if counter == 0:
             break
 

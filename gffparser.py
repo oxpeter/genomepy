@@ -741,7 +741,14 @@ def investigate(args):
     for gene in genelist:
         print "*" * 7 , gene, "*" * 7
         geneseq = genematch.extractseq(gene)
-        geneblast = genematch.blastgene(geneseq)
+        geneblast = genematch.blastants(geneseq)
+        results = genematch.blast_results(geneblast)
+        print results
+        for result in results:
+            print result
+            print result[0].title
+            print "Score: %d\tBits: %d\tE-value: %d" % (result[1].score, result[1].bits, result[1].expect)
+            print "id: %d(%.2f%%)\t+ve: %d(%.2f%%)" % (result[1].identities, 100.0 * result[1].identities / result[0].length, result[1].positives, 100.0 * result[1].positives / result[0].length)
 
 
 def methylation_analysis(args):
