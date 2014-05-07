@@ -15,6 +15,7 @@ from Bio.SeqFeature import SeqFeature, FeatureLocation
 #from reportlab.lib import colors
 #from reportlab.lib.units import cm
 from Bio.Graphics import GenomeDiagram
+import progressbar              # from Nilton Volpato
 
 import gff2bed2
 import genematch
@@ -491,13 +492,13 @@ def parse_go(gene, gofile='/Volumes/Genome/Genome_analysis/Gene_Ontology/armyant
                 output_dict[g] = go_dict[g]
             except KeyError:
                 #print g, "was not found."
-                output_dict[g] = {"GO:######":("None listed","None listed")}
+                output_dict[g] = {"GO:######":("None listed","NA")}
     else:
         try:
             output_dict[gene] = go_dict[gene]
         except KeyError:
             #print gene, "was not found."
-            output_dict[gene] = {"GO:######":("None listed","None listed")}
+            output_dict[gene] = {"GO:######":("None listed","NA")}
     return output_dict
 
 
@@ -731,24 +732,39 @@ def investigate(args):
 
     reportfile_h = open(args.output_file, 'w')
 
-    for gene in genelist:
-        genegos = go_monster.findem(gene)
-        genename = mygff.nameit(gene)
-        reportfile_h.write("%-12s%-50s" % (gene, genename ) \
-            + "   ".join([ g + " " + genegos[g][1] + " " + genegos[g][0] for g in genegos ]) + "\n" )
-    reportfile_h.close()
+
+    # setup progress bar for this rather long process that is to follow:
+    bar = progressbar.ProgressBar(maxval=len(genelist), \
+    widgets=[progressbar.Bar('=', '[', ']'), ' ', progressbar.Percentage()])
+    count=0
 
     for gene in genelist:
-        print "*" * 7 , gene, "*" * 7
+        #print "*" * 7, "Processing", gene, "*" * 7
+        genegos = go_monster.findem(gene)
+        genename = mygff.nameit(gene)
+        reportfile_h.write("%s\n%-12s'%s'\n%s\n" % ("*" * 70, gene, genename, "*" * 70 ) )
+        reportfile_h.write("".join([ "\t%s %s %s\n" % (g, genegos[g][1], genegos[g][0]) for g in genegos ]))
+        reportfile_h.write("-" * 70 + "\n")
         geneseq = genematch.extractseq(gene)
-        geneblast = genematch.blastants(geneseq)
-        results = genematch.blast_results(geneblast)
-        print results
-        for result in results:
-            print result
-            print result[0].title
-            print "Score: %d\tBits: %d\tE-value: %d" % (result[1].score, result[1].bits, result[1].expect)
-            print "id: %d(%.2f%%)\t+ve: %d(%.2f%%)" % (result[1].identities, 100.0 * result[1].identities / result[0].length, result[1].positives, 100.0 * result[1].positives / result[0].length)
+        geneblast = genematch.blast_ncbi(geneseq, queryterms='(("cerapachys biroi"[Organism]) OR "drosophila melangaster"[Organism]) OR "caenorhabditis elegans"[Organism]')
+        results = genematch.blast_results(geneblast,3)
+        for alignment,hsp in results:
+            try:
+                title = re.search('^[^>]+', alignment.title).group(0)
+            except:
+                title = alignment.title
+            reportfile_h.write( title + "\n" )
+            reportfile_h.write( "Score: %d\tBits: %d\tE-value: %d\n" %
+                (hsp.score, hsp.bits, hsp.expect) )
+            reportfile_h.write( "id: %d(%.2f%%)\t+ve: %d(%.2f%%)\n" %
+                (hsp.identities, 100.0 * hsp.identities / alignment.length, hsp.positives,
+                100.0 * hsp.positives / alignment.length) )
+        reportfile_h.write("\n\n")
+        bar.update(count+1)
+        count += 1
+    bar.finish()
+    reportfile_h.close()
+
 
 
 def methylation_analysis(args):
@@ -814,7 +830,9 @@ def methylation_analysis(args):
                 out_h.write( "%-20s %-10d %-4s %-6s %-8s %-8s" % (scaf,posn,strand,coverage,freqC,freqT) \
                     + " %-17s %-4d %-7s %-5s \n" % ("Intergenic", -1, 'n/a', 'n/a' ) )
                 out_h.close()
-
+    else:
+        sys.stdout.write("%d lines processed.\n" % (count) )
+        sys.stdout.flush()
 
 if __name__ == '__main__':
 
