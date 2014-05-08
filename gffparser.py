@@ -786,6 +786,7 @@ def methylation_analysis(args):
     cmd = "wc " + args.input_file + " > results.tmp"
     os.system(cmd)
     size = open("result.tmp", 'rb').readline().split()[0]
+    print "There are %d lines to be processed (approx %d hours)." % (size, size/1000000)
     os.system("rm result.tmp")
     # setup progress bar
     bar = progressbar.ProgressBar(maxval=size, \
