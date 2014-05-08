@@ -23,12 +23,13 @@ import genematch
 ####### CLASSES ############################################################
 
 class My_gff(object):
-    "an object for quick assessment of where a SNP lies"
-    def __init__(self, gff_file):
+    "an object for quick assessment of where a GENE/SNP lies"
+    def __init__(self, gff_file="/Volumes/Genome/armyant.OGS.V1.8.6.gff"):
 
         self.genedict = {}
         self.genecount = 0
         self.geneids = {}
+        self.genescaf = {}
 
         gff_h = open(gff_file,'rb')
         for line in gff_h:
@@ -38,6 +39,7 @@ class My_gff(object):
                 start = min(int(line.split()[3]), int(line.split()[4]))
                 stop = max(int(line.split()[3]), int(line.split()[4]))
                 geneid = re.search('ID=([^;]*);', line.split('\t')[8]).groups()[0]
+                self.genescaf[geneid] = scaf
                 try:
                     genename = re.search('Name=([^;]*);', line.split('\t')[8]).groups()[0]
                 except:
@@ -67,6 +69,9 @@ class My_gff(object):
 
     def __len__(self):
         return (self.genecount)
+
+    def whichscaf(self, geneid):
+        return self.genescaf[geneid]
 
     def gene(self, locus):
         scaf, posn = locus
