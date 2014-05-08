@@ -782,17 +782,24 @@ def methylation_analysis(args):
     out_h.write( "%-20s%-10s%-7s%-10s%-6s%-6s%-12s%-5s%-8s%-5s\n" % ("scaf", "posn","strand","coverage","freqC", "freqT", "gene_id", "exon", "cds_pos", "codon_str") )
     out_h.close()
 
+    # collect details of immensity of task before you:
+    cmd = "wc " + args.input_file + " > results.tmp"
+    os.system(cmd)
+    size = open("result.tmp", 'rb').readline().split()[0]
+    os.system("rm result.tmp")
+    # setup progress bar
+    bar = progressbar.ProgressBar(maxval=size, \
+    widgets=[progressbar.Bar('=', '[', ']'), ' ', progressbar.Percentage()])
+    count=0
+
+
     print "extracting SNP information"
     deg_h = open(args.input_file, 'rb')
 
     deg_h.next()
-    count = 0
     for line in deg_h:
         count += 1
-        if count % 10000 == 0:
-            sys.stdout.write("%d lines processed.\r" % (count) )
-            sys.stdout.flush()
-            #print count, "lines processed."
+        bar.update(count)
         scaf = line.split()[1]
         posn = int(line.split()[2])
         strand = line.split()[3]
@@ -833,6 +840,7 @@ def methylation_analysis(args):
     else:
         sys.stdout.write("%d lines processed.\n" % (count) )
         sys.stdout.flush()
+    bar.finish()
 
 if __name__ == '__main__':
 
