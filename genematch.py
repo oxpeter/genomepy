@@ -9,9 +9,11 @@ import re
 
 import Bio.Blast.NCBIWWW as ncbi
 import Bio.Blast.NCBIXML as xml
-
 from Bio.Seq import Seq
 from Bio.Alphabet import generic_dna, IUPAC
+from scipy.stats import fisher_exact
+
+
 
 ############################################
 
@@ -227,9 +229,171 @@ def gff_init():
     """ To speed up gene matching, this will create a gff dictionary """
     pass
 
-def GO_finder(genelist):
+
+######## Gene Ontology and KEGG pathway analyses ######################
+def go_finder(genelist):
     pass
 
+def kegg_enrichment(genelist):
+    """
+    For  a given genelist, determines which KEGG modules ( ~ pathways ) are significantly
+    enriched. Returns both module enrichment P-values, and upper-level classification
+    P-values (as dictionaries).
+    """
+    #print "Converting Genes to KEGGs"
+    # convert genelist to KEGG list:
+    kegg_h = open('/Volumes/Genome/Genome_analysis/KEGG_pathways/KEGG_orthologs.list', 'rb')
+
+    keggd = {}
+    keggcount = {}
+
+    for line in kegg_h:
+        if len(line.split()) == 2: # ie, the line has a cbir entry and KO
+            keggd[line.split()[0]] = line.split()[1]
+            keggcount[line.split()[1]] = True
+        else:
+            #keggd[line.split()[0]] = 'na'
+            pass
+
+    kegglist = []
+    for gene in genelist:
+        try:
+            kegglist.append(keggd[gene])
+        except KeyError:
+            pass
+
+    #print "Creating Kegg module library"
+    ## create Kegg module dictionary:
+    kmod_h = open('/Volumes/Genome/Genome_analysis/KEGG_pathways/ko00002.keg', 'rb')
+
+    kmodlist = []
+    kmodd = {}
+    kmodcount = 0
+    kmcount = {}
+    kmod = 'none'
+
+    kgroupb = {}
+    kgroupbcount = {}
+    kgroupblist = []
+    kbcount = {}
+    b_group = 'none'
+
+    kgroupc = {}
+    kgroupccount = {}
+    kccount = {}
+    kgroupclist = []
+    c_group = 'none'
+
+    kod = {}    # this is to count how many KOs there are in the list
+
+    for line in kmod_h:
+        """if line[0] == 'B':  #   higher level functional description (eg 'Energy Metabolism')
+            kbcount[b_group] = len(kgroupbcount)# add old b_group count to dictionary
+            kgroupbcount = {}                   # reset counter
+            try:
+                b_group = re.search("<b>(.*)</b>", line).group(1)
+                kgroupblist.append(b_group)
+            except:
+                b_group = 'none'
+        """
+        if line[0] == 'C':    # descriptive function (eg Carbon fixation)
+            kccount[c_group] = len(kgroupccount)# add old c_group count to dictionary
+            kgroupccount = {}                   # reset counter
+            try:
+                c_group = re.search("C *(.*)", line.trim()).group(1)
+                kgroupclist.append(c_group)
+            except:
+                c_group = 'none'
+
+        elif line[0] == 'D':     # Kegg module (eg M00165 Reductive pentose phosphate cycle)
+            kmcount[kmod] = kmodcount
+            kmodcount = 0
+            try:
+                ksearch = re.search("(M[0-9]*) *(.*)\[PATH", line)
+                kmod = ksearch.group(1)
+                kmoddef = ksearch.group(2)
+                kmodlist.append(kmod)
+            except:
+                kmod = 'none'
+                kmoddef = 'none'
+
+        elif line[0] == 'E':    # Kegg term
+            try:
+                ko = re.search("(K[0-9]*)", line).group(1)
+
+                kmodcount += 1
+                kgroupbcount[ko] = True
+                kgroupccount[ko] = True
+                try:
+                    kmodd[ko].append(kmod)
+                    kgroupb[ko].append(b_group)
+                    kgroupc[ko].append(c_group)
+                except:
+                    kmodd[ko] = [kmod]
+                    kgroupb[ko] = [b_group]
+                    kgroupc[ko] = [c_group]
+            except:
+                pass
+    kccount[c_group] = len(kgroupccount)# add final old c_group count to dictionary
+    kmcount[kmod] = kmodcount           # add final kmmod group count to dictionary
+
+
+    kmodtestsize = len(kmodlist)    # for multiple testing correction
+    kgrpbtestsize = len(kgroupblist)
+    kgrpctestsize = len(kgroupclist)
+
+    #print "calculating Fisher's exact test"
+    # count number of kegglist KOs are in each kegg module, perform Fisher's exact test
+    dip = 0
+    dipcount = {}               # possibly unnecessary
+    kmodenrich = {}
+    kmododds   = {}
+
+    for mod in kmodlist:
+        for ko in kegglist:
+            if ko not in kmodd: # some KOs do not exist in a module.
+                pass
+            elif mod in kmodd[ko]:
+                dip += 1
+        dipcount[mod] = dip     # possibly unnecessary
+        oddrat, pval = fisher_exact([
+            [dip, len(kegglist) - dip],
+            [kmcount[mod]-dip, len(keggcount) - len(kegglist) - kmcount[mod] + dip]
+        ])
+
+        kmododds[mod]   = oddrat
+        kmodenrich[mod] = pval / kmodtestsize
+        dip = 0     # reset for next module
+
+
+    dip = 0
+    kcenrich = {}
+    kcodds = {}
+
+    for fn in kgroupclist:
+        for ko in kegglist:
+            if fn in kgroupc[ko]:
+                dip += 1
+        oddrat, pval = fisher_exact([
+            [dip, len(kegglist) - dip],
+            [kccount[fn]-dip, len(keggcount) - len(kegglist) - kccount[fn] + dip]
+        ])
+
+        kcodds[fn]   = oddrat
+        kcenrich[fn] = pval / kgrpctestsize
+        dip = 0     # reset for next module
+
+    return kmodenrich, kcenrich
+
+
+    ## Fisher's Exact Test:
+    #               In Pathway:         Not in Pathway:                                         SUM:
+    #   DEG     :   dip                 len(kegglist) - dip                                     len(kegglist)
+    #   non-DEG :   kmcount[mod]-dip    len(keggcount) - len(kegglist) - kmcount[mod] + dip     len(keggcount) - len(kegglist)
+    #   SUM     :   kmcount[mod]        len(keggcount) - kmcount[mod]                           len(keggcount)
+    #
+
+########################################################################
 def mainprog():
     print "welcome back to python"
     cmmd, fname  = sys.argv
