@@ -360,11 +360,14 @@ def kegg_enrichment(genelist):
             [dip, len(kegglist) - dip],
             [kmcount[mod]-dip, len(keggcount) - len(kegglist) - kmcount[mod] + dip]
         ])
-
+        if dip > 0:
+            print "%s\n         In Path  Not in Path\nDEG    :  %-7d %d\nnon-DEG:  %-7d %d\n%.4f\n" % (mod, dip, len(kegglist) - dip,kmcount[mod]-dip, len(keggcount) - len(kegglist) - kmcount[mod] + dip, pval )
         kmododds[mod]   = oddrat
-        kmodenrich[mod] = pval / kmodtestsize
+        kmodenrich[mod] = pval * kmodtestsize
         dip = 0     # reset for next module
-
+    #sys.stdout.write("%s\n         In Path  Not in Path\nDEG    :  %-7d %d\nnon-DEG:  %-7d %d\n%.4f\n" % (mod, dip, len(kegglist) - dip,kmcount[mod]-dip, len(keggcount) - len(kegglist) - kmcount[mod] + dip, pval ) )
+    #print type(pval), pval
+    #print type(kmodtestsize), kmodtestsize
 
     dip = 0
     kcenrich = {}
@@ -374,15 +377,18 @@ def kegg_enrichment(genelist):
         for ko in kegglist:
             if fn in kgroupc[ko]:
                 dip += 1
+        #sys.stdout.write("         In Path  Not in Path\nDEG    :%-7d %d\nnonDEG:%-7d %d" % (dip, len(kegglist) - dip, kccount[fn]-dip, len(keggcount) - len(kegglist) - kccount[fn] + dip ))
         oddrat, pval = fisher_exact([
             [dip, len(kegglist) - dip],
             [kccount[fn]-dip, len(keggcount) - len(kegglist) - kccount[fn] + dip]
         ])
-
+        #sys.stdout.write(pval)
+        #sys.stdout.flush()
         kcodds[fn]   = oddrat
         kcenrich[fn] = pval / kgrpctestsize
         dip = 0     # reset for next module
 
+    #print kmodenrich
     return kmodenrich, kcenrich
 
 
