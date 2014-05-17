@@ -40,37 +40,58 @@ def findCRISPRsites(sequence_file='/Volumes/Genome/Cbir.assembly.v3.0_singleline
     #print scaffmatches[0:1]
     return allmatches, scaffmatches
 
-def blastseq(seq, outpath="/Users/POxley/blastoutput.tmp"):
+def make_fasta(seq, seqnames=None, outpath='/Users/POxley/blastinput.tmp', append='w'):
+    "Takes a list of sequences and creates a fasta formatted file"
 
     # create an input file for blasting, depending on if seq is a list or one sequence.
     if isinstance(seq, list):
-        wobj = open('/Users/POxley/blastinput.tmp', 'w')
+        if seqnames:
+            namedic = dict(zip(seq,seqnames))
+        wobj = open(outpath, append)
         for item in seq:
-            position = str(seq.index(item))
-            defline = ">lcl|sequence" + position + "\n"
-            seqline = item + "\n"
+            if seqnames:
+                defline = ">lcl|sequence" + namedic[item] + "\n"
+            else:
+                position = str(seq.index(item))
+                defline = ">lcl|sequence" + position + "\n"
+            seqline = str(item) + "\n"
             wobj.write(defline)
             wobj.write(seqline)
         wobj.close()
 
     else:
-        wobj = open('/Users/POxley/blastinput.tmp', 'w')
-        defline = ">lcl|sequence1\n"
-        seqline = seq + "\n"
+        wobj = open(outpath, append)
+        if seqnames:
+            defline = ">lcl|" + seqnames + '\n'
+        else:
+            defline = ">lcl|sequence1\n"
+        seqline = str(seq) + "\n"
         wobj.write(defline)
         wobj.write(seqline)
         wobj.close()
 
-    # for tabular output:
-    blast_tab_cmd = 'blastn -query /Users/POxley/blastinput.tmp -db /Volumes/Genome/BLAST_databases/nucleotide/Cbir.v3.0 -outfmt 6 -word_size 7 -evalue 1000000 -out ' + outpath
+def blastseq(seq, seqnames=None, inpath='/Users/POxley/blastinput.tmp' , outpath="/Users/POxley/blastoutput.tmp", outfmt='tab'):
+    "blast sequence given in input file against C.biroi genome"
 
-    # if you want blast results that are viewer friendly:
-    blastcmd_vis = 'blastn -query /Users/POxley/blastinput.tmp \
-        -db /Volumes/Genome/BLAST_databases/nucleotide/Cbir.v3.0 \
-        -out /Users/POxley/blastoutput.check.tmp \
-        -outfmt 3 -word_size 7 -evalue 1000000'
+    make_fasta(seq, seqnames, inpath)
 
-    os.system(blast_tab_cmd)
+    if outfmt == 'tab':
+        # for tabular output:
+        blastcmd_tab = 'blastn -query ' + inpath + ' -db /Volumes/Genome/BLAST_databases/nucleotide/Cbir.v3.0 -outfmt 6 -word_size 7 -evalue 1000000 -out ' + outpath
+        os.system(blastcmd_tab)
+
+    elif outfmt == 'xml':
+        # for xml output:
+        blastcmd_xml = 'blastn -query ' + inpath + ' -db /Volumes/Genome/BLAST_databases/nucleotide/Cbir.v3.0 -outfmt 5 -word_size 7 -evalue 1000000 -out ' + outpath
+        os.system(blastcmd_xml)
+
+    else:
+        # if you want blast results that are viewer friendly:
+        blastcmd_vis = 'blastn -query ' + inpath + \
+            ' -db /Volumes/Genome/BLAST_databases/nucleotide/Cbir.v3.0 -out ' + \
+            ' -out ' + outpath + \
+            ' -outfmt 3 -word_size 7 -evalue 1000000'
+        os.system(blastcmd_vis)
 
 def findnearest(scaffold, hitpos, gff_p="/Volumes/Genome/armyant.OGS.V1.8.6.gff"):
     gffdict = {}
@@ -104,7 +125,7 @@ def scaflength(scaffold):
     scaffseq = genematch.extractseq(scaffold, type='fa', OGS='/Volumes/Genome/Cbir.assembly.v3.0')
     return len(scaffseq)
 
-def showblast(filename='/Users/POxley/blastoutput.tmp', threshold=80, gaps_allowed=3, seq="_unknown_", out_path="/Users/POxley/Documents/Analysis/Data/People/Buck/Second_Round/results.info"):
+def showblast(filename='/Users/POxley/blastoutput.tmp', threshold=80, gaps_allowed=3, shownearest=True, seq="_unknown_", out_path="/Users/POxley/Documents/Analysis/Data/People/Buck/Second_Round/results.info"):
     "parses blast results in xml format (such as those created by blastseq()"
 
     blastresults = open(filename, 'rb')
@@ -143,9 +164,10 @@ def showblast(filename='/Users/POxley/blastoutput.tmp', threshold=80, gaps_allow
                         hitnumber[hit.query] = 1
                         hitseq[hit.query] = hsp.query
                     results_h.write( "id: %d (%.2f%%)\tgaps: %d\tmismatches: %d\n" % (hsp.identities, pcid, hsp.gaps, seq_len - hsp.gaps - hsp.identities) )
-                    upstream, downstream = findnearest(a_scaffold, hsp.sbjct_start)
-                    results_h.write( "distance to end of scaffold is %d\n" % ( scaflength(a_scaffold) - hsp.sbjct_start) )
-                    results_h.write( "Closest gene upstream: %d (%s)\nClosest gene downstream: %d (%s)\n" % (upstream[0], upstream[1], downstream[0], downstream[1]) )
+                    if shownearest:
+                        upstream, downstream = findnearest(a_scaffold, hsp.sbjct_start)
+                        results_h.write( "distance to end of scaffold is %d\n" % ( scaflength(a_scaffold) - hsp.sbjct_start) )
+                        results_h.write( "Closest gene upstream: %d (%s)\nClosest gene downstream: %d (%s)\n" % (upstream[0], upstream[1], downstream[0], downstream[1]) )
                     results_h.write( "query:  %s\n" % (hsp.query) )
                     results_h.write( "        %s\n" % (hsp.match) )
                     results_h.write( "genome: %s\n\n" % (hsp.sbjct) )
