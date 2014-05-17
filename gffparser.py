@@ -740,9 +740,11 @@ def investigate(args):
 
     # setup progress bar for this rather long process that is to follow:
     bar = progressbar.ProgressBar(maxval=len(genelist), \
-    widgets=[progressbar.Bar('=', '[', ']'), ' ', progressbar.Percentage()])
+    widgets=[progressbar.Bar('=', '[', ']'), ' ', progressbar.ETA()]) # can also use progressbar.Percentage()
     count=0
 
+    print "\nAnalysing %d genes:" % (len(genelist))
+    bar.update(count)
     for gene in genelist:
         #print "*" * 7, "Processing", gene, "*" * 7
         genegos = go_monster.findem(gene)
@@ -765,8 +767,8 @@ def investigate(args):
                 (hsp.identities, 100.0 * hsp.identities / alignment.length, hsp.positives,
                 100.0 * hsp.positives / alignment.length) )
         reportfile_h.write("\n\n")
-        bar.update(count+1)
-        count += 1
+        count+=1
+        bar.update(count)
     bar.finish()
     reportfile_h.close()
 
@@ -795,7 +797,7 @@ def methylation_analysis(args):
     os.system("rm result.tmp")
     # setup progress bar
     bar = progressbar.ProgressBar(maxval=size, \
-    widgets=[progressbar.Bar('=', '[', ']'), ' ', progressbar.Percentage()])
+    widgets=[progressbar.Bar('=', '[', ']'), ' ', progressbar.ETA()])
     count=0
 
 
