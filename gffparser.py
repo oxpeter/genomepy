@@ -88,35 +88,6 @@ class My_gff(object):
     def nameit(self, geneid):
         return self.geneids[geneid]
 
-class GO_maker(object):
-    "an object for quick access to all GO terms for a gene set"
-    def __init__(self, gofile):
-
-        self.go_dict = {}
-        go_handle = open(gofile, 'rb')
-        columns = [ line.split('\t') for line in go_handle ]
-        for columnset in columns:
-            self.go_dict[columnset[0]] = {}
-            for element in columnset[2:]:
-                gopattern = "GO:([0-9]*)"
-                defpattern = "[a-z].*"
-                rego = re.search(gopattern, element)
-                defgo = re.search(defpattern, element)
-                if rego is not None and defgo is not None:
-                    defline = defgo.group().split(';')
-                    gotype = defline[1].split(' ')[1][0] + defline[1].split(' ')[2][0]
-                    godef =  defline[0]
-                    self.go_dict[columnset[0]][rego.group()] =  (godef, gotype)
-
-    def findem(self, geneid):
-        "given a gene, return the GO terms associated with it"
-        try:
-            output_dict = self.go_dict[geneid]
-        except KeyError:
-            #print gene, "was not found."
-            output_dict = {"GO:######":("None listed","None listed")}
-
-        return output_dict
 
 ####### FUNCTIONS ############################################################
 
@@ -727,7 +698,7 @@ def separate_cuffjoined(gtf_file, dblid):
 def investigate(args):
     #gffobj = assemble_dict(in_file=args.gff_file, in_seq_file=args.genome_file)
     print "assembling monster"
-    go_monster = GO_maker(args.GO_file)
+    go_monster = genematch.GO_maker(args.GO_file)
     print "assembing my gff"
     mygff = My_gff(args.gff_file)
 
@@ -783,7 +754,7 @@ def methylation_analysis(args):
     print "Intron checker gff created:", intronchecker
 
     print "assembling go monster..."
-    go_monster = GO_maker(args.GO_file)
+    go_monster = genematch.GO_maker(args.GO_file)
 
     out_h = open(args.output_file, 'w')
     out_h.write( "%-20s%-10s%-7s%-10s%-6s%-6s%-12s%-5s%-8s%-5s\n" % ("scaf", "posn","strand","coverage","freqC", "freqT", "gene_id", "exon", "cds_pos", "codon_str") )

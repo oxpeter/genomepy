@@ -13,7 +13,73 @@ from Bio.Seq import Seq
 from Bio.Alphabet import generic_dna, IUPAC
 from scipy.stats import fisher_exact
 
+class GO_maker(object):
+    "an object for quick access to all GO terms for a gene set"
+    def __init__(self, gofile='/Volumes/Genome/Genome_analysis/Gene_Ontology/Cerapachys_biroi.CE.GO.gene.list'):
+        self.go_repo = {}
+        self.go_dict = {}
+        self.go_defs = {}
 
+        go_handle = open(gofile, 'rb')
+        columns = [ line.split('\t') for line in go_handle ]
+        for columnset in columns:
+            self.go_dict[columnset[0]] = {}
+            for element in columnset[2:]:
+                gopattern = "GO:([0-9]*)"
+                defpattern = "\; ([-A-Za-z ]*)\; ([A-Za-z ]*)"
+                rego = re.search(gopattern, element)    # ie the GO number GO:001432
+                defgo = re.search(defpattern, element)  # the type and definition of the go term
+                if rego is not None and defgo is not None:
+                    # parse GO term into type (eg Molecular Process) and definition (eg Redox Reaction)
+                    gotype = defgo.group(2).split()[0][0] + defgo.group(2).split()[1][0]
+                    godef =  defgo.group(1)
+                    self.go_dict[columnset[0]][rego.group()] =  (godef, gotype)
+                    try:
+                        self.go_repo[rego.group()].append(columnset[0])
+                    except KeyError:
+                        self.go_repo[rego.group()] = [columnset[0]]
+                    self.go_defs[rego.group()] = (godef, gotype)
+
+    def count_goterms(self):
+        "returns the number of unique go terms stored in object"
+        return len(self.go_repo)
+
+    def count_genes(self):
+        "returns the number of unique gene ids stored"
+        return len(self.go_dict)
+
+    def fetch_genes(self, goterm):
+        "given a goterm, returns the genes that have that go term"
+        try:
+            return self.go_repo[goterm]
+        except KeyError:
+            #print "No genes with %s found!" % (goterm)
+            return ['NoGeneFound']
+
+    def fetch_gos(self, genelist):
+        "yields subsequent dictionaries of go terms associated with each geneid in genelist"
+        for geneid in genelist:
+            try:
+                yield self.go_dict[geneid]
+            except KeyError:
+                yield {"GO:######":("None listed","None listed")}
+
+    def findem(self, geneid):
+        "given a gene, return the dictionary of GO terms associated with it"
+        try:
+            output_dict = self.go_dict[geneid]
+        except KeyError:
+            #print gene, "was not found."
+            output_dict = {"GO:######":("None listed","None listed")}
+
+        return output_dict
+
+    def define_go(self, goterm):
+        'given a GO number, return the information about it'
+        try:
+            return self.go_defs[goterm]
+        except KeyError:
+            return ("GO not found","GO not found")
 
 ############################################
 
@@ -234,14 +300,54 @@ def gff_init():
 def go_finder(genelist):
     pass
 
-def kegg_enrichment(genelist):
-    """
-    For  a given genelist, determines which KEGG modules ( ~ pathways ) are significantly
-    enriched. Returns both module enrichment P-values, and upper-level classification
-    P-values (as dictionaries).
-    """
-    #print "Converting Genes to KEGGs"
-    # convert genelist to KEGG list:
+def go_enrichment(genelist):
+    go_obj = GO_maker()
+
+    god = {}
+    goodds = {}
+    gopval = {}
+
+    for godict in go_obj.fetch_gos(genelist):
+        for goterm in godict:
+            try:
+                god[goterm] += 1
+            except KeyError:
+                god[goterm] = 1
+
+    for goterm in god:
+        dip = god[goterm]
+        try:
+            oddrat, pval = fisher_exact([
+                [dip, len(genelist) - dip],
+                [len(go_obj.fetch_genes(goterm)) - dip, go_obj.count_genes() - len(go_obj.fetch_genes(goterm)) - len(genelist) + dip]
+            ], alternative='greater')
+        except ValueError:
+            oddrat = 0.0
+            pval =  1.0
+        if pval < 0.1:
+            print "%s (%s) %s\n          \
+            Has GO  Doesn't Have Go\n\
+            DEG    :  %-7d %d\n\
+            non-DEG:  %-7d %d\n\
+            odds-ratio: %.3f\n\
+            P-value: %.3f\n" % (goterm, go_obj.define_go(goterm)[1], go_obj.define_go(goterm)[0],
+            dip, len(genelist) - dip,
+            len(go_obj.fetch_genes(goterm)) - dip, go_obj.count_genes() - len(go_obj.fetch_genes(goterm)) - len(genelist) + dip,
+            oddrat, pval)
+        goodds[goterm]   = oddrat
+        gopval[goterm]  = pval
+
+    ## Fisher's Exact Test:
+    #               Has GOterm:                             Doesn't Have GOterm:                                                            SUM:
+    #   DEG     :   dip                                     len(genelist) - dip                                                             len(genelist) --> but assumes all genes have all GO terms known!
+    #   non-DEG :   len(go_obj.fetch_genes(goterm)) - dip   go_obj.count_genes() - len(go_obj.fetch_genes(goterm)) - len(genelist) + dip    go_obj.count_genes() - len(genelist)
+    #   SUM     :   len(go_obj.fetch_genes(goterm))         go_obj.count_genes() - len(go_obj.fetch_genes(goterm))                          go_obj.count_genes()
+    #
+
+    return gopval
+
+def cbir_to_kegg(genelist):
+    "Converts Cbir gene IDs to Kegg orthologs (KOs)"
     kegg_h = open('/Volumes/Genome/Genome_analysis/KEGG_pathways/KEGG_orthologs.list', 'rb')
 
     keggd = {}
@@ -261,6 +367,17 @@ def kegg_enrichment(genelist):
             kegglist.append(keggd[gene])
         except KeyError:
             pass
+    return len(keggd), kegglist
+
+def kegg_module_enrichment(genelist):
+    """
+    For  a given genelist, determines which KEGG modules are significantly
+    enriched. Returns both module enrichment P-values, and upper-level classification
+    P-values (as dictionaries).
+    NB - will not likely show many, as modules are very small. Better to use BRITE pathways
+    instead (via kegg_pathway_enrichment() ).
+    """
+    size, kegglist = cbir_to_kegg(genelist)
 
     #print "Creating Kegg module library"
     ## create Kegg module dictionary:
@@ -363,7 +480,7 @@ def kegg_enrichment(genelist):
         if dip > 0:
             print "%s\n         In Path  Not in Path\nDEG    :  %-7d %d\nnon-DEG:  %-7d %d\n%.4f\n" % (mod, dip, len(kegglist) - dip,kmcount[mod]-dip, len(keggcount) - len(kegglist) - kmcount[mod] + dip, pval )
         kmododds[mod]   = oddrat
-        kmodenrich[mod] = pval * kmodtestsize
+        kmodenrich[mod] = pval
         dip = 0     # reset for next module
     #sys.stdout.write("%s\n         In Path  Not in Path\nDEG    :  %-7d %d\nnon-DEG:  %-7d %d\n%.4f\n" % (mod, dip, len(kegglist) - dip,kmcount[mod]-dip, len(keggcount) - len(kegglist) - kmcount[mod] + dip, pval ) )
     #print type(pval), pval
@@ -380,7 +497,7 @@ def kegg_enrichment(genelist):
         #sys.stdout.write("         In Path  Not in Path\nDEG    :%-7d %d\nnonDEG:%-7d %d" % (dip, len(kegglist) - dip, kccount[fn]-dip, len(keggcount) - len(kegglist) - kccount[fn] + dip ))
         oddrat, pval = fisher_exact([
             [dip, len(kegglist) - dip],
-            [kccount[fn]-dip, len(keggcount) - len(kegglist) - kccount[fn] + dip]
+            [kccount[fn]-dip, size - len(kegglist) - kccount[fn] + dip]
         ])
         #sys.stdout.write(pval)
         #sys.stdout.flush()
@@ -390,7 +507,103 @@ def kegg_enrichment(genelist):
 
     #print kmodenrich
     return kmodenrich, kcenrich
+    ## Fisher's Exact Test:
+    #               In Pathway:         Not in Pathway:                                         SUM:
+    #   DEG     :   dip                 len(kegglist) - dip                                     len(kegglist)
+    #   non-DEG :   kmcount[mod]-dip    len(keggcount) - len(kegglist) - kmcount[mod] + dip     len(keggcount) - len(kegglist)
+    #   SUM     :   kmcount[mod]        len(keggcount) - kmcount[mod]                           len(keggcount)
+    #
 
+def kegg_pathway_enrichment(genelist):
+    """
+    For  a given genelist, determines which KEGG pathways are significantly
+    enriched. Returns both module enrichment P-values, and upper-level classification
+    P-values (as dictionaries).
+    """
+
+    num_ko, kegglist = cbir_to_kegg(genelist)
+    print "genelist size: %-4d KO size: %d" % (len(genelist), len(kegglist))
+
+    ## create Kegg module dictionary:
+    kmod_h = open('/Volumes/Genome/Genome_analysis/KEGG_pathways/ko00001.keg', 'rb')
+
+    ## kmod terms (copied from kegg_module_enrichment() ), are used here to capture the
+    ## kegg pathway (indicated in ko00001.keg by [PATH:ko#####] )
+    kmodlist = []
+    kmodd = {}
+    kmodcount = 0
+    kmcount = {}
+    kmod = 'none'
+
+    kod = {}    # this is to count how many KOs there are in the list
+
+    for line in kmod_h:
+        if line[0] == 'C':     # Kegg Pathway
+            kmcount[kmod] = kmodcount
+            kmodcount = 0
+            try:
+                ksearch = re.search("C +([0-9]*) *(.*)\[PATH", line)
+                kmod = ksearch.group(1)
+                kmoddef = ksearch.group(2)
+                kmodlist.append(kmod)
+                #print ksearch.group(0), "\n", kmod
+            except:
+                kmod = 'none'
+                kmoddef = 'none'
+
+        elif line[0] == 'D':    # Kegg term
+            try:
+                ko = re.search("(K[0-9]*)", line).group(1)
+
+                kmodcount += 1
+                kgroupbcount[ko] = True
+                kgroupccount[ko] = True
+                try:
+                    kmodd[ko].append(kmod)
+                    kgroupb[ko].append(b_group)
+                    kgroupc[ko].append(c_group)
+                except:
+                    kmodd[ko] = [kmod]
+                    kgroupb[ko] = [b_group]
+                    kgroupc[ko] = [c_group]
+            except:
+                pass
+    kmcount[kmod] = kmodcount           # add final kmmod group count to dictionary
+
+
+    kmodtestsize = len(kmodlist)    # for multiple testing correction
+
+    #print "calculating Fisher's exact test"
+    # count number of kegglist KOs are in each kegg module, perform Fisher's exact test
+    dip = 0
+    dipcount = {}               # possibly unnecessary
+    kmodenrich = {}
+    kmododds   = {}
+
+    for mod in kmodlist:
+        for ko in kegglist:
+            if ko not in kmodd: # some KOs do not exist in a module.
+                pass
+            elif mod in kmodd[ko]:
+                dip += 1
+        dipcount[mod] = dip     # possibly unnecessary
+        oddrat, pval = fisher_exact([
+            [dip, len(kegglist) - dip],
+            [kmcount[mod]-dip, num_ko - len(kegglist) - kmcount[mod] + dip]
+        ], alternative='greater')
+        if pval < 0.1 and len(kegglist) >= 1:
+            print "%s\n         \
+            In Path  Not in Path\n\
+            DEG    :  %-7d %d\n\
+            non-DEG:  %-7d %d\n\
+            Odds Ratio:%.3f\n\
+            P-value:%.4f\n" % (mod,
+            dip, len(kegglist) - dip,
+            kmcount[mod]-dip, num_ko - len(kegglist) - kmcount[mod] + dip,
+            oddrat, pval)
+        kmododds[mod]   = oddrat
+        kmodenrich[mod] = pval
+        dip = 0     # reset for next module
 
     ## Fisher's Exact Test:
     #               In Pathway:         Not in Pathway:                                         SUM:
@@ -399,6 +612,7 @@ def kegg_enrichment(genelist):
     #   SUM     :   kmcount[mod]        len(keggcount) - kmcount[mod]                           len(keggcount)
     #
 
+    return kmodenrich
 ########################################################################
 def mainprog():
     print "welcome back to python"
