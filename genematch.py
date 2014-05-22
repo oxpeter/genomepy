@@ -13,6 +13,8 @@ from Bio.Seq import Seq
 from Bio.Alphabet import generic_dna, IUPAC
 from scipy.stats import fisher_exact
 
+############################################
+
 class GO_maker(object):
     "an object for quick access to all GO terms for a gene set"
     def __init__(self, gofile='/Volumes/Genome/Genome_analysis/Gene_Ontology/Cerapachys_biroi.CE.GO.gene.list'):
@@ -315,6 +317,8 @@ def go_enrichment(genelist):
                 god[goterm] = 1
 
     for goterm in god:
+        if goterm == "GO:######":
+            continue
         dip = god[goterm]
         try:
             oddrat, pval = fisher_exact([
@@ -324,7 +328,7 @@ def go_enrichment(genelist):
         except ValueError:
             oddrat = 0.0
             pval =  1.0
-        if pval < 0.1:
+        if pval < 0.1 and False:
             print "%s (%s) %s\n          \
             Has GO  Doesn't Have Go\n\
             DEG    :  %-7d %d\n\
