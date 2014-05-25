@@ -227,7 +227,7 @@ if __name__ == '__main__':
     readfiles = os.listdir(args.fastq_dir);
 
     # perform alignments!
-    if not skip_alignment:
+    if not args.skip_alignment:
 		print "Aligning reads\n", "#"  * 40
 		align_reads(lanes, readfiles, args.idx_path, args.idx_name, args.out_dir, args.fastq_dir)
     if args.align_stats:
