@@ -199,6 +199,7 @@ if __name__ == '__main__':
     parser.add_argument("-B", "--build_idx", action="store_true", help="Build the genome index file from specified fasta file")
     parser.add_argument("-R", "--build_ref", action="store_true", help="Build the reference genome fasta file (will overwrite existing genome_ref)")
     parser.add_argument("-s", "--align_stats", action="store_true", help="perform additional statistical analyses")
+    parser.add_argument("-a", "--skip_alignment", action="store_true", help="turns off read alignment")
     args = parser.parse_args()
 
     # create some internal defaults for building and looking at sites:
@@ -226,7 +227,9 @@ if __name__ == '__main__':
     readfiles = os.listdir(args.fastq_dir);
 
     # perform alignments!
-    align_reads(lanes, readfiles, args.idx_path, args.idx_name, args.out_dir, args.fastq_dir)
+    if not skip_alignment:
+		print "Aligning reads\n", "#"  * 40
+		align_reads(lanes, readfiles, args.idx_path, args.idx_name, args.out_dir, args.fastq_dir)
     if args.align_stats:
         alignment_stats(lanes, readfiles, args.out_dir, args.gen_ref, pos_stats)
 
