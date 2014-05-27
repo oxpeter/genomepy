@@ -86,8 +86,10 @@ class My_gff(object):
         return ingene
 
     def nameit(self, geneid):
-        return self.geneids[geneid]
-
+        try:
+            return self.geneids[geneid]
+        except KeyError:
+            return "Not_found"
 
 ####### FUNCTIONS ############################################################
 
