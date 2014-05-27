@@ -695,7 +695,7 @@ def separate_cuffjoined(gtf_file, dblid):
 
 ##### INTEGRATED PROGRAMS ##################
 
-def investigate(args):
+def investigate(args, doblast=True):
     #gffobj = assemble_dict(in_file=args.gff_file, in_seq_file=args.genome_file)
     print "assembling monster"
     go_monster = genematch.GO_maker(args.GO_file)
@@ -723,20 +723,21 @@ def investigate(args):
         reportfile_h.write("%s\n%-12s'%s'\n%s\n" % ("*" * 70, gene, genename, "*" * 70 ) )
         reportfile_h.write("".join([ "\t%s %s %s\n" % (g, genegos[g][1], genegos[g][0]) for g in genegos ]))
         reportfile_h.write("-" * 70 + "\n")
-        geneseq = genematch.extractseq(gene)
-        geneblast = genematch.blast_ncbi(geneseq, queryterms='(("cerapachys biroi"[Organism]) OR "drosophila melangaster"[Organism]) OR "caenorhabditis elegans"[Organism]')
-        results = genematch.blast_results(geneblast,3)
-        for alignment,hsp in results:
-            try:
-                title = re.search('^[^>]+', alignment.title).group(0)
-            except:
-                title = alignment.title
-            reportfile_h.write( title + "\n" )
-            reportfile_h.write( "Score: %d\tBits: %d\tE-value: %d\n" %
-                (hsp.score, hsp.bits, hsp.expect) )
-            reportfile_h.write( "id: %d(%.2f%%)\t+ve: %d(%.2f%%)\n" %
-                (hsp.identities, 100.0 * hsp.identities / alignment.length, hsp.positives,
-                100.0 * hsp.positives / alignment.length) )
+        if doblast:
+            geneseq = genematch.extractseq(gene)
+            geneblast = genematch.blast_ncbi(geneseq, queryterms='(("cerapachys biroi"[Organism]) OR "drosophila melangaster"[Organism]) OR "caenorhabditis elegans"[Organism]')
+            results = genematch.blast_results(geneblast,3)
+            for alignment,hsp in results:
+                try:
+                    title = re.search('^[^>]+', alignment.title).group(0)
+                except:
+                    title = alignment.title
+                reportfile_h.write( title + "\n" )
+                reportfile_h.write( "Score: %d\tBits: %d\tE-value: %d\n" %
+                    (hsp.score, hsp.bits, hsp.expect) )
+                reportfile_h.write( "id: %d(%.2f%%)\t+ve: %d(%.2f%%)\n" %
+                    (hsp.identities, 100.0 * hsp.identities / alignment.length, hsp.positives,
+                    100.0 * hsp.positives / alignment.length) )
         reportfile_h.write("\n\n")
         count+=1
         bar.update(count)
@@ -830,10 +831,11 @@ if __name__ == '__main__':
     parser.add_argument("-f", "--genome_file", type=str, default="/Volumes/Genome/Cbir.assembly.v3.0_gi.fa", help="Genome fasta file for analyses")
     parser.add_argument("-G", "--GO_file", type=str, default='/Volumes/Genome/Genome_analysis/Gene_Ontology/armyant.OGS.V1.5.GOterms.list', help="GO file for analyses")
     parser.add_argument("-I", "--investigate", action='store_true',  help="analyse a list of genes")
+    parser.add_argument("-b", "--blastoff", action='store_true',  help="turns off blast search for investigate option")
     args = parser.parse_args()
 
     if args.investigate:
-        investigate(args)
+        investigate(args, doblast=not(args.blastoff))
     else:
         methylation_analysis(args)
 
