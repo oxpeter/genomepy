@@ -22,6 +22,71 @@ import genematch
 
 ####### CLASSES ############################################################
 
+class Splicer(object):
+    """a class that allows analysis of splice junctions from a gff file and tophat
+    junction files"""
+    def __init__(self, gff_file="/Volumes/Genome/armyant.OGS.V1.8.6.gff"):
+        ## construct canonical and alternate splice junctions from gff file:
+        ## saved in 2 dictionaries: canonical = { 'scaffold2':{(5292,5344):'cbir_02775',():,():,():}
+        ##                          alternate = { 'scaffold2':{(5292,5671):'cbir_02775',():,():,():}
+
+        # extract information from gff file:
+        gff_h = open(gff_file, 'rb')
+        #         scaf             exon_start            exon_end              gene_name                      strand
+        exons = ((line.split()[0], int(line.split()[3]), int(line.split()[4]), line.split()[8].split('=')[1], line.split()[6]) for line in gff_h if line.split()[2] == 'CDS')
+        gff_h.close()
+
+        self.canonical = {}
+        self.alternative = {}
+
+        geneid = 'initiating_string'
+        junctionlist = [1]  # this is to prevent an error when first starting the for loop
+
+        for exon in exons:
+            # add junction start & stop to list for creation of alternate splice junctions
+            if exon[3] == geneid:
+                if exon[4] == '-':
+                    junctionlist += [exon[2], exon[1]]
+                else:
+                    junctionlist += [exon[1], exon[2]]
+
+            else:
+                ## determine junctions, add to dictionaries and reset list:
+
+                # extract canonical splice sites from list of junctions:
+                for posn in range(len(junctionlist)):
+                    if posn == 0:
+                        continue
+                    elif posn % 2 == 0:
+                        try:
+                            self.canonical[scaffold][(saved,junctionlist[posn])] = geneid
+                        except KeyError:
+                            self.canonical[scaffold] = {(saved,junctionlist[posn]):geneid}
+
+                # extract alternative splice sites from junction list:
+
+
+
+                # reset variables:
+                scaffold = exon[0]
+                geneid = exon[3]
+                if exon[4] == '-':
+                    junctionlist = [exon[2], exon[1]]
+                else:
+                    junctionlist = [exon[1], exon[2]]
+
+
+
+
+
+    def map_junctions(self, junc_file):
+        ## parse junctions from bed file and compare to object's dictionary of junctions
+
+    def _map_to_genome(self, junc_dict):
+        ## searches each junction in list against canonical and alternate splice junction
+        ## dictionaries
+
+
 class My_gff(object):
     "an object for quick assessment of where a GENE/SNP lies"
     def __init__(self, gff_file="/Volumes/Genome/armyant.OGS.V1.8.6.gff"):
