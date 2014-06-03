@@ -44,13 +44,13 @@ class Splicer(object):
 
         for exon in exons:
             # add junction start & stop to list for creation of alternate splice junctions
-            if exon[3] == geneid:
+            if exon[3] == geneid: # ie, still analysing the same gene
                 if exon[4] == '-':
                     junctionlist += [exon[2], exon[1]]
                 else:
                     junctionlist += [exon[1], exon[2]]
 
-            else:
+            else:  # ie, a new gene has started
                 ## determine junctions, add to dictionaries and reset list:
 
                 # extract canonical splice sites from list of junctions:
@@ -59,13 +59,19 @@ class Splicer(object):
                         continue
                     elif posn % 2 == 0:
                         try:
-                            self.canonical[scaffold][(saved,junctionlist[posn])] = geneid
+                            self.canonical[scaffold][(junctionlist[posn-1],junctionlist[posn])] = geneid
                         except KeyError:
-                            self.canonical[scaffold] = {(saved,junctionlist[posn]):geneid}
+                            self.canonical[scaffold] = {(junctionlist[posn-1],junctionlist[posn]):geneid}
 
                 # extract alternative splice sites from junction list:
-
-
+                for posn in range(len(junctionlist)):
+                    if posn % 2 != 0:
+                        for secposn in range(len(junctionlist))[posn:]:
+                            if secposn % 2 == 0:
+                                try:
+                                    self.alternative[scaffold][(junctionlist[posn],junctionlist[secposn])] = geneid
+                                except KeyError:
+                                    self.alternative[scaffold] = {(junctionlist[posn],junctionlist[secposn]):geneid}
 
                 # reset variables:
                 scaffold = exon[0]
@@ -75,8 +81,12 @@ class Splicer(object):
                 else:
                     junctionlist = [exon[1], exon[2]]
 
-
-
+        # output for checking:
+        print "Canonical and alternate junctions saved:"
+        print "Scaf\tjunction\tgene"
+        for scaf in self.canonical.keys()[0:3]:
+            for jnc in self.canonical[scaf].keys()[0:6]:
+                print "%-12s %-12s %s" % (scaf, jnc, self.canonical[scaf][jnc])
 
 
     def map_junctions(self, junc_file):
