@@ -25,34 +25,43 @@ import genematch
 class Splicer(object):
     """a class that allows analysis of splice junctions from a gff file and tophat
     junction files"""
-    def __init__(self, gff_file="/Volumes/Genome/armyant.OGS.V1.8.6.gff"):
+    def __init__(self, gff_file="/Volumes/Genome/armyant.OGS.V1.8.6_lcl.gff", chosenscaffold='lcl|scaffold149'):
         ## construct canonical and alternate splice junctions from gff file:
         ## saved in 2 dictionaries: canonical = { 'scaffold2':{(5292,5344):'cbir_02775',():,():,():}
         ##                          alternate = { 'scaffold2':{(5292,5671):'cbir_02775',():,():,():}
 
         # extract information from gff file:
         gff_h = open(gff_file, 'rb')
-        #         scaf             exon_start            exon_end              gene_name                      strand
-        exons = ((line.split()[0], int(line.split()[3]), int(line.split()[4]), line.split()[8].split('=')[1], line.split()[6]) for line in gff_h if line.split()[2] == 'CDS')
-        gff_h.close()
+        print 'reading gff file...'
+        if chosenscaffold == 'All':
+            #         scaf             exon_start            exon_end              gene_name                      strand
+            exons = ((line.split()[0], int(line.split()[3]), int(line.split()[4]), line.split()[8].split('=')[1], line.split()[6]) for line in gff_h if line.split()[2] == 'CDS')
+        else:   # can specify a single scaffold to analyse (much faster, hopefully!)
+            exons = ((line.split()[0], int(line.split()[3]), int(line.split()[4]), line.split()[8].split('=')[1], line.split()[6]) for line in gff_h if line.split()[2] == 'CDS' and line.split()[0] == chosenscaffold)
+
+
+        print "gff file read."
 
         self.canonical = {}
         self.alternative = {}
 
         geneid = 'initiating_string'
-        junctionlist = [1]  # this is to prevent an error when first starting the for loop
+        junctionlist = [1,2]  # this is to prevent an error when first starting the for loop
+
+        # setup progress bar for this rather long process that is to follow:
+        bar = progressbar.ProgressBar(maxval=100262, \
+        widgets=[progressbar.Bar('=', '[', ']'), ' ', progressbar.ETA()]) # can also use progressbar.Percentage()
+        count=0
+        bar.update(count)
 
         for exon in exons:
             # add junction start & stop to list for creation of alternate splice junctions
             if exon[3] == geneid: # ie, still analysing the same gene
-                if exon[4] == '-':
-                    junctionlist += [exon[2], exon[1]]
-                else:
-                    junctionlist += [exon[1], exon[2]]
+                junctionlist += [min(exon[2], exon[1]), max(exon[2], exon[1])]
 
             else:  # ie, a new gene has started
                 ## determine junctions, add to dictionaries and reset list:
-
+                junctionlist.sort() # sort by first element in tuple
                 # extract canonical splice sites from list of junctions:
                 for posn in range(len(junctionlist)):
                     if posn == 0:
@@ -76,25 +85,77 @@ class Splicer(object):
                 # reset variables:
                 scaffold = exon[0]
                 geneid = exon[3]
-                if exon[4] == '-':
-                    junctionlist = [exon[2], exon[1]]
-                else:
-                    junctionlist = [exon[1], exon[2]]
+                junctionlist = [min(exon[2], exon[1]), max(exon[2], exon[1])]
+            count+=1
+            bar.update(count)
+        bar.finish()
+        gff_h.close()
 
-        # output for checking:
-        print "Canonical and alternate junctions saved:"
-        print "Scaf\tjunction\tgene"
+    def __str__(self):
+        """bigstring = "Canonical and alternate junctions saved:\n"
+        bigstring +=  "Scaf\tjunction\tgene\n"
         for scaf in self.canonical.keys()[0:3]:
             for jnc in self.canonical[scaf].keys()[0:6]:
-                print "%-12s %-12s %s" % (scaf, jnc, self.canonical[scaf][jnc])
+                bigstring += "%-12s %-12s %s\n" % (scaf, jnc, self.canonical[scaf][jnc])"""
+        return "%d scaffolds:%d junctions" % (len(self.canonical), len(self.canonical[self.canonical.keys()[0]]))
 
+    __repr__ = __str__
 
-    def map_junctions(self, junc_file):
+    def map_junctions(self, junc_file, chosenscaffold='All'):
         ## parse junctions from bed file and compare to object's dictionary of junctions
 
-    def _map_to_genome(self, junc_dict):
-        ## searches each junction in list against canonical and alternate splice junction
-        ## dictionaries
+        junc_h = open(junc_file, 'rb')
+        #           scaf, frag_start, junc_start, junc_end, frag_end (in gff positioning)
+        if chosenscaffold == 'All':
+            juncgen = ((line.split()[0],                               # 0) scaf
+                        int(line.split()[1]) + 1,                           # 1) frag_start
+                        int(line.split()[1]) + int(line.split()[10].split(',')[0]),    # 2) junc_start
+                        int(line.split()[1]) + int(line.split()[11].split(',')[1]) + 1,# 3) junc_end
+                        int(line.split()[1]) + int(line.split()[11].split(',')[1]) + int(line.split()[10].split(',')[1])
+                        ) for line in junc_h if line[0] != 't')
+        else:
+            juncgen = ((line.split()[0],                               # scaf
+                        int(line.split()[1]) + 1,                           # frag_start
+                        int(line.split()[1]) + int(line.split()[10].split(',')[0]),    # junc_start
+                        int(line.split()[1]) + int(line.split()[11].split(',')[1]) + 1,# junc_end
+                        int(line.split()[1]) + int(line.split()[11].split(',')[1]) + int(line.split()[10].split(',')[1])
+                        ) for line in junc_h if line.split()[0] == chosenscaffold and line[0] != 't')
+
+
+        # create dictionaries for storing the results:
+        self.canonicals = {}
+        self.alternatives = {}
+        self.novels = {}
+        ccount = 0
+        acount = 0
+        ncount = 0
+        count = 0
+
+        for junction in juncgen:
+            count += 1
+            if junction[0] not in self.canonical: # mainly if Splicer constructed from single scaffold
+                continue
+            elif (junction[2], junction[3]) in self.canonical[junction[0]]:
+                ccount += 1
+                try:
+                    self.canonicals[junction[0]][(junction[2], junction[3])] = self.canonical[junction[0]][(junction[2], junction[3])]
+                except KeyError:
+                    self.canonicals[junction[0]] = {(junction[2], junction[3]):self.canonical[junction[0]][(junction[2], junction[3])]}
+            elif (junction[2], junction[3]) in self.alternative[junction[0]]:
+                acount += 1
+                try:
+                    self.alternatives[junction[0]][(junction[2], junction[3])] = self.alternative[junction[0]][(junction[2], junction[3])]
+                except KeyError:
+                    self.alternatives[junction[0]] = {(junction[2], junction[3]):self.alternative[junction[0]][(junction[2], junction[3])]}
+            else:
+                ncount += 1
+                try:
+                    self.novels[junction[0]][(junction[2], junction[3])] = True
+                except KeyError:
+                    self.novels[junction[0]] = {(junction[2], junction[3]):True}
+        print "%d junctions analysed" % (count)
+        junc_h.close()
+        return ccount, acount, ncount
 
 
 class My_gff(object):
@@ -909,12 +970,27 @@ if __name__ == '__main__':
     parser.add_argument("-G", "--GO_file", type=str, default='/Volumes/Genome/Genome_analysis/Gene_Ontology/armyant.OGS.V1.5.GOterms.list', help="GO file for analyses")
     parser.add_argument("-I", "--investigate", action='store_true',  help="analyse a list of genes")
     parser.add_argument("-b", "--blastoff", action='store_true',  help="turns off blast search for investigate option")
+    parser.add_argument("-m", "--methylation", action='store_true',  help="perform methylation analysis")
+    parser.add_argument("-S", "--splicing", action='store_true',  help="perform alternate splicing analysis")
     args = parser.parse_args()
 
     if args.investigate:
         investigate(args, doblast=not(args.blastoff))
-    else:
+
+    if args.methylation:
         methylation_analysis(args)
+
+    if args.splicing:
+        trial = Splicer()
+        print trial
+        bedfile = '/Volumes/Genome/transcriptomes/BroodSwap/controls/C16/Tophat/tophat_F2_20131210/junctions.bed'
+        match, alt, novel = trial.map_junctions(bedfile, chosenscaffold='lcl|scaffold149')
+        print "%s:\n%d junctions match\n%d junctions alternately spliced\n%d junctions novel" % (bedfile, match, alt, novel)
+        bedfile = '/Volumes/Genome/transcriptomes/BroodSwap/controls/C16/R_FL06_ctrl_tophat/tophat_out/junctions.bed'
+        match, alt, novel = trial.map_junctions(bedfile, chosenscaffold='lcl|scaffold149')
+        print "%s:\n%d junctions match\n%d junctions alternately spliced\n%d junctions novel" % (bedfile, match, alt, novel)
+
+
 
 
 
