@@ -328,7 +328,7 @@ def go_enrichment(genelist):
         except ValueError:
             oddrat = 0.0
             pval =  1.0
-        if pval < 0.1 and False:
+        if dip > 1 and pval < 0.05 and True:
             print "%s (%s) %s\n          \
             Has GO  Doesn't Have Go\n\
             DEG    :  %-7d %d\n\
