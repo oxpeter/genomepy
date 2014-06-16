@@ -25,7 +25,7 @@ import genematch
 class Splicer(object):
     """a class that allows analysis of splice junctions from a gff file and tophat
     junction files"""
-    def __init__(self, gff_file="/Volumes/Genome/armyant.OGS.V1.8.6_lcl.gff", chosenscaffold='lcl|scaffold149'):
+    def __init__(self, gff_file="/Volumes/Genome/armyant.OGS.V1.8.6_lcl.gff", chosenscaffold='All'):
         ## construct canonical and alternate splice junctions from gff file:
         ## saved in 2 dictionaries: canonical = { 'scaffold2':{(5292,5344):'cbir_02775',():,():,():}
         ##                          alternate = { 'scaffold2':{(5292,5671):'cbir_02775',():,():,():}
@@ -44,6 +44,7 @@ class Splicer(object):
 
         self.canonical = {}
         self.alternative = {}
+        self.boundaries = {}
 
         geneid = 'initiating_string'
         junctionlist = [1,2]  # this is to prevent an error when first starting the for loop
@@ -71,6 +72,12 @@ class Splicer(object):
                             self.canonical[scaffold][(junctionlist[posn-1],junctionlist[posn])] = geneid
                         except KeyError:
                             self.canonical[scaffold] = {(junctionlist[posn-1],junctionlist[posn]):geneid}
+                        try:
+                            self.boundaries[scaffold][junctionlist[posn-1]] = geneid
+                            self.boundaries[scaffold][junctionlist[posn]]   = geneid
+                        except KeyError:
+                            self.boundaries[scaffold] = {junctionlist[posn-1] : geneid}
+                            self.boundaries[scaffold] = {junctionlist[posn] : geneid}
 
                 # extract alternative splice sites from junction list:
                 for posn in range(len(junctionlist)):
@@ -126,9 +133,15 @@ class Splicer(object):
         self.canonicals = {}
         self.alternatives = {}
         self.novels = {}
+        self.readjusts = {}
+
+        self.canon_genes = {}
+        self.alt_genes = {}
+
         ccount = 0
         acount = 0
         ncount = 0
+        rcount = 0
         count = 0
 
         for junction in juncgen:
@@ -143,19 +156,42 @@ class Splicer(object):
                     self.canonicals[junction[0]] = {(junction[2], junction[3]):self.canonical[junction[0]][(junction[2], junction[3])]}
             elif (junction[2], junction[3]) in self.alternative[junction[0]]:
                 acount += 1
+                geneid = self.alternative[junction[0]][(junction[2], junction[3])]
                 try:
-                    self.alternatives[junction[0]][(junction[2], junction[3])] = self.alternative[junction[0]][(junction[2], junction[3])]
+                    self.alternatives[junction[0]][(junction[2], junction[3])] = geneid
                 except KeyError:
-                    self.alternatives[junction[0]] = {(junction[2], junction[3]):self.alternative[junction[0]][(junction[2], junction[3])]}
-            else:
+                    self.alternatives[junction[0]] = {(junction[2], junction[3]):geneid}
+                try:
+                    self.alt_genes[geneid] += [(junction[2], junction[3])]
+                except:
+                    self.alt_genes[geneid] = [(junction[2], junction[3])]
+            elif junction[2] in self.boundaries[junction[0]] or junction[3] in self.boundaries[junction[0]]:
+                # check to see if one of the junction boundaries is still canonical:
+                rcount += 1
+                try:
+                    geneid = self.boundaries[junction[0]][junction[2]]
+                except KeyError:
+                    try:
+                        geneid = self.boundaries[junction[0]][junction[3]]
+                    except KeyError:
+                        geneid = 'Unknown'
+                try:
+                    self.readjusts[junction[0]][(junction[2], junction[3])] = geneid
+                except KeyError:
+                    self.readjusts[junction[0]] = {(junction[2], junction[3]):geneid}
+                try:
+                    self.alt_genes[geneid] += [(junction[2], junction[3])]
+                except:
+                    self.alt_genes[geneid] = [(junction[2], junction[3])]
+            else: # neither boundary matches a canonical boundary
                 ncount += 1
                 try:
                     self.novels[junction[0]][(junction[2], junction[3])] = True
                 except KeyError:
                     self.novels[junction[0]] = {(junction[2], junction[3]):True}
-        print "%d junctions analysed" % (count)
+        #print "%d junctions analysed" % (count)
         junc_h.close()
-        return ccount, acount, ncount
+        return ccount, acount, rcount, ncount
 
 
 class My_gff(object):
@@ -359,6 +395,67 @@ def make_bed(gff_file):
     for scaf in missing_dict:
         bed_handle.write( "%s\t%d\t%d\tNonGene\t.\t+\t%d\t%d\t0\t1\t%d\t%d\n" % (scaf, 0, missing_dict[scaf], 0, missing_dict[scaf], 0, missing_dict[scaf]) )
     bed_handle.close()
+
+def trim_untranslated(gff_file):
+    """removes 5' and 3' untranslated sequence information from gff file for later
+    comparisons of different isoforms.
+    gff file MUST be sorted for this to work."""
+
+    gff_h = open(gff_file, 'rb')
+    newgff = open(gff_file + ".trimmed.gff", 'w')
+    firstline = True
+    minpos = 1000000000
+    maxpos = -10
+    cds_lines = ""
+
+    for line in gff_h:
+        if len(line) > 1:
+            feature = line.split()[2]
+        else:
+            continue
+        if feature == "exon":
+            continue
+        elif feature == "CDS":
+            if min(int(line.split()[3]), int(line.split()[4])) < minpos:
+                minpos = min(int(line.split()[3]), int(line.split()[4]))
+            if max(int(line.split()[3]), int(line.split()[4])) > maxpos:
+                maxpos = max(int(line.split()[3]), int(line.split()[4]))
+            cds_lines += line
+        elif firstline:
+            gene_line = line.split()
+            firstline = False
+        elif feature == "gene":
+            # print features of previous gene:
+            gene_line[3] = str(minpos)
+            gene_line[4] = str(maxpos)
+            mrna_line[3] = str(minpos)
+            mrna_line[4] = str(maxpos)
+            newgff.write("\t".join(gene_line) + "\n")
+            newgff.write("\t".join(mrna_line) + "\n")
+            newgff.write(cds_lines)
+
+            # reset values for next gene:
+            minpos = 1000000000
+            maxpos = -10
+            gene_line = line.split()
+            cds_lines = ""
+
+        elif feature == "mRNA":
+            mrna_line = line.split()
+
+        else:   # ie, if three_prime_UTR or five_prime_UTR...
+            continue
+    # write final gene to file:
+    gene_line[3] = str(minpos)
+    gene_line[4] = str(maxpos)
+    mrna_line[3] = str(minpos)
+    mrna_line[4] = str(maxpos)
+    newgff.write("\t".join(gene_line) + "\n")
+    newgff.write("\t".join(mrna_line) + "\n")
+    newgff.write(cds_lines)
+
+    newgff.close()
+    gff_h.close()
 
 
 ##### GFF FILE MANIPULATION #####
@@ -984,13 +1081,26 @@ if __name__ == '__main__':
         trial = Splicer()
         print trial
         bedfile = '/Volumes/Genome/transcriptomes/BroodSwap/controls/C16/Tophat/tophat_F2_20131210/junctions.bed'
-        match, alt, novel = trial.map_junctions(bedfile, chosenscaffold='lcl|scaffold149')
-        print "%s:\n%d junctions match\n%d junctions alternately spliced\n%d junctions novel" % (bedfile, match, alt, novel)
-        bedfile = '/Volumes/Genome/transcriptomes/BroodSwap/controls/C16/R_FL06_ctrl_tophat/tophat_out/junctions.bed'
-        match, alt, novel = trial.map_junctions(bedfile, chosenscaffold='lcl|scaffold149')
-        print "%s:\n%d junctions match\n%d junctions alternately spliced\n%d junctions novel" % (bedfile, match, alt, novel)
-
-
+        print "scaffold                 canonical   alt  readj  novel"
+        sumalt = 0
+        sumreadj = 0
+        summatch = 0
+        sumnovel = 0
+        for scaf in trial.canonical:
+            match, alt, readj, novel = trial.map_junctions(bedfile, chosenscaffold=scaf)
+            summatch += match
+            sumalt += alt
+            sumreadj += readj
+            sumnovel += novel
+            #if alt > 0:
+                #print "%-25s:%-4d %-4d %-4d %-4d %s" % (scaf, match, alt, readj, novel, sorted(trial.alternatives[scaf].values()))
+            #else:
+            print "%-25s:%-4d %-4d %-4d %-4d" % (scaf, match, alt, readj, novel)
+        grandsum = float(summatch + sumalt + sumreadj + sumnovel)/100
+        print ("Total canonical:  %d (%.2f%%)\n\
+                Total alternate:  %d (%.2f%%)\n\
+                Total readjusted: %d (%.2f%%)\n\
+                Total novel:      %d (%.2f%%)" % (summatch, summatch/grandsum, sumalt, sumalt/grandsum, sumreadj, sumreadj/grandsum, sumnovel, sumnovel/grandsum))
 
 
 
