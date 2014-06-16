@@ -407,6 +407,7 @@ def trim_untranslated(gff_file):
     minpos = 1000000000
     maxpos = -10
     cds_lines = ""
+    exon_lines = ""
 
     for line in gff_h:
         if len(line) > 1:
@@ -414,13 +415,19 @@ def trim_untranslated(gff_file):
         else:
             continue
         if feature == "exon":
-            continue
+            prevexon = line.split()
         elif feature == "CDS":
-            if min(int(line.split()[3]), int(line.split()[4])) < minpos:
-                minpos = min(int(line.split()[3]), int(line.split()[4]))
-            if max(int(line.split()[3]), int(line.split()[4])) > maxpos:
-                maxpos = max(int(line.split()[3]), int(line.split()[4]))
+            thiscds = line.split()
+            if min(int(thiscds[3]), int(thiscds[4])) < minpos:
+                minpos = min(int(thiscds[3]), int(thiscds[4]))
+            if max(int(thiscds[3]), int(thiscds[4])) > maxpos:
+                maxpos = max(int(thiscds[3]), int(thiscds[4]))
             cds_lines += line
+            if prevexon[3] != thiscds[3]:
+                prevexon[3] = thiscds[3]
+            if prevexon[4] != thiscds[4]:
+                prevexon[4] = thiscds[4]
+            exon_lines += "\t".join(prevexon) + "\n"
         elif firstline:
             gene_line = line.split()
             firstline = False
@@ -432,6 +439,7 @@ def trim_untranslated(gff_file):
             mrna_line[4] = str(maxpos)
             newgff.write("\t".join(gene_line) + "\n")
             newgff.write("\t".join(mrna_line) + "\n")
+            newgff.write(exon_lines)
             newgff.write(cds_lines)
 
             # reset values for next gene:
@@ -439,6 +447,7 @@ def trim_untranslated(gff_file):
             maxpos = -10
             gene_line = line.split()
             cds_lines = ""
+            exon_lines = ""
 
         elif feature == "mRNA":
             mrna_line = line.split()
@@ -452,6 +461,7 @@ def trim_untranslated(gff_file):
     mrna_line[4] = str(maxpos)
     newgff.write("\t".join(gene_line) + "\n")
     newgff.write("\t".join(mrna_line) + "\n")
+    newgff.write(exon_lines)
     newgff.write(cds_lines)
 
     newgff.close()
