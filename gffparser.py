@@ -402,7 +402,7 @@ def trim_untranslated(gff_file):
     gff file MUST be sorted for this to work."""
 
     gff_h = open(gff_file, 'rb')
-    newgff = open(gff_file + ".trimmed.gff", 'w')
+    newgff = open(gff_file[:-4] + ".trimmed.gff", 'w')
     firstline = True
     minpos = 1000000000
     maxpos = -10
@@ -466,6 +466,110 @@ def trim_untranslated(gff_file):
 
     newgff.close()
     gff_h.close()
+
+def fix_gtf(gtf_file):
+    "edits cufflinks gtf file to allow Transdecoder to maintain gene identity"
+    gtf_h = open(gtf_file, 'rb')
+    newgtf = open(gtf_file[:-4] + ".edit.gtf", 'w')
+    for line in gtf_h:
+        geneid = re.search('gene_id "([^"]*)"', line).group(1)
+        isoform = re.search('transcript_id "([^"]*)"', line).group(1)
+        if geneid == "":
+            newline = line.replace('gene_id "','gene_id "' +  isoform)
+        elif re.search("Cbir", isoform) is not None:
+            newline = line.replace('transcript_id "', 'transcript_id "' + geneid + ".")
+        else:
+            newline = line
+        newgtf.write(newline)
+    gtf_h.close()
+    newgtf.close()
+
+def bed2gtf(bedfile):
+    """convert Transdecoder bedfiles to gtf
+    prefix indicates the geneid prefix used by cufflinks
+    lcl|scaffold50	257378	259451	ID=Cbir_12556|m.39649;Cbir_12556|g.39649;ORF	0	+	257378	259451	.	6	288,173,225,135,49,477	0,425,784,1120,1359,1596
+
+    converts to:
+
+    lcl|scaffold50	Cufflinks	transcript	257379	259451	1	+	.	gene_id "F2brain.16743"; transcript_id "F2brain.16743.Cbir_12556";
+    lcl|scaffold50	Cufflinks	exon	    257379	257666	1	+	.	gene_id "F2brain.16743"; transcript_id "F2brain.16743.Cbir_12556"; exon_number "1";
+    lcl|scaffold50	Cufflinks	exon	    257804	257976	1	+	.	gene_id "F2brain.16743"; transcript_id "F2brain.16743.Cbir_12556"; exon_number "2";
+    lcl|scaffold50	Cufflinks	exon	    258163	258387	1	+	.	gene_id "F2brain.16743"; transcript_id "F2brain.16743.Cbir_12556"; exon_number "3";
+    lcl|scaffold50	Cufflinks	exon	    258499	258633	1	+	.	gene_id "F2brain.16743"; transcript_id "F2brain.16743.Cbir_12556"; exon_number "4";
+    lcl|scaffold50	Cufflinks	exon	    258738	258786	1	+	.	gene_id "F2brain.16743"; transcript_id "F2brain.16743.Cbir_12556"; exon_number "5";
+    lcl|scaffold50	Cufflinks	exon	    258975	259451	1	+	.	gene_id "F2brain.16743"; transcript_id "F2brain.16743.Cbir_12556"; exon_number "6";
+
+    """
+
+    bed_h = open(bedfile, 'rb')
+    gtf_h = open(bedfile[:-4] + ".gtf", 'w')
+    gff_h = open(bedfile[:-4] + ".gff", 'w')
+
+    genenames = {}
+    genesizes = {}
+    genestrands = {}
+
+    bed_h.next()
+
+    for line in bed_h:
+        fields = line.split()
+        scaf = fields[0]
+        feat = 'transdecoder'
+        gene_start  = int(fields[1]) + 1
+        gene_end    = int(fields[2])
+        strand      = fields[5]
+        labels      = fields[3].split(";")
+
+        gene_iso    = re.search("(\w+\.\w+)\.([A-Za-z0-9_\(\)\.]*)", labels[1])
+        geneid      = gene_iso.group(1)
+        isoform     = gene_iso.group(0)
+
+        # update gene information:
+        try:
+            genenames[geneid] += isoform + ">"
+        except KeyError:
+            genenames[geneid] = isoform + ">"
+
+        if geneid in genesizes:
+            if min(gene_start, gene_end) < min(genesizes[geneid]):
+                genesizes[geneid][genesizes[geneid].index(min(genesizes[geneid]))] = min(gene_start, gene_end)
+            if max(gene_start, gene_end) > max(genesizes[geneid]):
+                genesizes[geneid][genesizes[geneid].index(max(genesizes[geneid]))] = max(gene_start, gene_end)
+        else:
+            genesizes[geneid] = [gene_start, gene_end]
+
+        genestrands[geneid] = strand
+
+        # get exon info
+        exon_starts = [int(x) for x in fields[11].split(",")]
+        exon_lengths= [int(x) for x in fields[10].split(",")]
+        exon_number = 1
+
+        # create gtf and gff files:
+        transcript_line = "\t".join([scaf, "gffparser", "transcript", str(gene_start), str(gene_end), '1', strand, ".", 'gene_id "' + geneid + '"; transcript_id "' + isoform + '";\n'])
+        mRNA_line = "\t".join([scaf, "gffparser", "mRNA", str(gene_start), str(gene_end), ".", strand, ".", "ID=" + isoform + ";Parent=" + geneid + "\n"])
+        gtf_h.write(transcript_line)
+        gff_h.write(mRNA_line)
+
+        for exon_start, exon_length in zip(exon_starts, exon_lengths):
+            gtf_line = '\t'.join([scaf, "gffparser", "exon", str(exon_start + gene_start), str(exon_start + gene_start + exon_length - 1), '1', strand, '.', 'gene_id "' + geneid + '"; transcript_id "' + isoform + '"; exon_number "' + str(exon_number) + '";\n'])
+            gff_CDS  = '\t'.join([scaf, "gffparser", "CDS",  str(exon_start + gene_start), str(exon_start + gene_start + exon_length - 1), '.', strand, '.', 'ID=cds.' + str(exon_number) + isoform + ';Parent=' + isoform + '\n'])
+            gtf_h.write(gtf_line)
+            gff_h.write(gff_CDS)
+            exon_number += 1
+
+
+    #convert gene name to Cbir version if available:
+    for geneid in genenames:
+        try:
+            genename = re.search("(Cbir[A-Za-z0-9_\(\)]+)", genenames[geneid]).group(1)
+        except:
+            genename = geneid
+        gene_line = '\t'.join([scaf, "gffparser", "gene", str(min(genesizes[geneid])), str(max(genesizes[geneid])), '.', genestrands[geneid], '.', 'ID=' + geneid + ';Name=' + genename + '\n'])
+        gff_h.write(gene_line)
+
+    gff_h.close()
+    gtf_h.close()
 
 
 ##### GFF FILE MANIPULATION #####
