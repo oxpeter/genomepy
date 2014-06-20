@@ -485,20 +485,8 @@ def fix_gtf(gtf_file):
     newgtf.close()
 
 def bed2gtf(bedfile):
-    """convert Transdecoder bedfiles to gtf
+    """convert Transdecoder bedfiles to gtf and gff
     prefix indicates the geneid prefix used by cufflinks
-    lcl|scaffold50	257378	259451	ID=Cbir_12556|m.39649;Cbir_12556|g.39649;ORF	0	+	257378	259451	.	6	288,173,225,135,49,477	0,425,784,1120,1359,1596
-
-    converts to:
-
-    lcl|scaffold50	Cufflinks	transcript	257379	259451	1	+	.	gene_id "F2brain.16743"; transcript_id "F2brain.16743.Cbir_12556";
-    lcl|scaffold50	Cufflinks	exon	    257379	257666	1	+	.	gene_id "F2brain.16743"; transcript_id "F2brain.16743.Cbir_12556"; exon_number "1";
-    lcl|scaffold50	Cufflinks	exon	    257804	257976	1	+	.	gene_id "F2brain.16743"; transcript_id "F2brain.16743.Cbir_12556"; exon_number "2";
-    lcl|scaffold50	Cufflinks	exon	    258163	258387	1	+	.	gene_id "F2brain.16743"; transcript_id "F2brain.16743.Cbir_12556"; exon_number "3";
-    lcl|scaffold50	Cufflinks	exon	    258499	258633	1	+	.	gene_id "F2brain.16743"; transcript_id "F2brain.16743.Cbir_12556"; exon_number "4";
-    lcl|scaffold50	Cufflinks	exon	    258738	258786	1	+	.	gene_id "F2brain.16743"; transcript_id "F2brain.16743.Cbir_12556"; exon_number "5";
-    lcl|scaffold50	Cufflinks	exon	    258975	259451	1	+	.	gene_id "F2brain.16743"; transcript_id "F2brain.16743.Cbir_12556"; exon_number "6";
-
     """
 
     bed_h = open(bedfile, 'rb')
@@ -509,9 +497,11 @@ def bed2gtf(bedfile):
     genesizes = {}
     genestrands = {}
 
-    bed_h.next()
+
 
     for line in bed_h:
+        if len(line.split()) < 6:
+            continue
         fields = line.split()
         scaf = fields[0]
         feat = 'transdecoder'
