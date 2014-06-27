@@ -397,6 +397,7 @@ def extended_gff(gff_file):
 
             bed_h.write("\t".join(genefields))
             bed_h.write(mrnaline)
+            count = 0
         if type == 'CDS':
             geneid = re.search("Parent=(Cbir[A-Za-z0-9_\.\(\)\/]*);", line).group(1)
             bed_h.write(line)
@@ -629,7 +630,6 @@ def strip_duplicates(bedfile):
     bed_h.close()
     newbed_h.close()
 
-
 def parse_names(genelist, gffobj):
     "takes a gene ID or list of gene IDs and returns the gene name from the gff file"
     ## Create dictionary of gene ids and their corresponding names:
@@ -721,7 +721,32 @@ def isolate_mRNA(gff_p):
     newfile_h.close()
     return newfile
 
+def reinstate_cbir(cuffcompare_gtf):
+    "for valid transcripts, replace cuffcompare id with original Cbir id."
+    gtf_h = open(cuffcompare_gtf, 'rb')
+    new_gtf = open(cuffcompare_gtf[:-4] + ".reins.gtf", 'w')
+    details = {}
+    for line in gtf_h:
+        fields = line.split('\t')
+        detail_list = fields[8].strip().split(';')
+        try:
+            details = dict([(x.strip().split(' ')[0], x.strip().split(' ')[1]) for x in detail_list if x != ''])
+        except IndexError:
+            print detail_list
+            die
 
+        geneid = re.search("(Cbir[A-Za-z0-9_\(\)\.\/]*)", details['oId'])
+        if geneid is not None:
+            details['transcript_id'] = '"%s"' % (geneid.group(1))
+
+        new_attributes = 'gene_id %(gene_id)s; transcript_id %(transcript_id)s;' % details
+        for attrib in details:
+            if attrib != 'gene_id' and attrib != 'transcript_id':
+                new_attributes += ' %s %s;' % (attrib, details[attrib])
+        new_fields = "\t".join(fields[:8]) + '\t' + new_attributes + '\n'
+        new_gtf.write(new_fields)
+    gtf_h.close()
+    new_gtf.close()
 
 ##### SEQRECORD FUNCTIONS #####
 
