@@ -550,7 +550,7 @@ def bed2gtf(bedfile):
         labels      = fields[3].split(";")
 
         try:
-            gene_iso    = re.search("(\w+\.\w+)\.([A-Za-z0-9_\(\)\.]*)", labels[1])
+            gene_iso    = re.search("(\w+)\.([A-Za-z0-9_\(\)\.]*)", labels[0])
             unexpressed = re.search("ID=(Cbir[A-Za-z0-9_\(\)\.]*)", labels[0]) # genes that are not expressed won't have the cufflinks id
         except IndexError:
             print fields[3], labels
@@ -561,7 +561,7 @@ def bed2gtf(bedfile):
         else:
             try:
                 geneid      = gene_iso.group(1)
-                isoform     = gene_iso.group(0)
+                isoform     = gene_iso.group(2)
             except:
                 print line
                 print labels[0]
@@ -591,7 +591,7 @@ def bed2gtf(bedfile):
 
         # create gtf and gff files:
         transcript_line = "\t".join([scaf, "gffparser", "transcript", str(gene_start), str(gene_end), '1', strand, ".", 'gene_id "' + geneid + '"; transcript_id "' + isoform + '";\n'])
-        mRNA_line = "\t".join([scaf, "gffparser", "mRNA", str(gene_start), str(gene_end), ".", strand, ".", "ID=" + isoform + ";Parent=" + geneid + "\n"])
+        mRNA_line = "\t".join([scaf, "gffparser", "mRNA", str(gene_start), str(gene_end), ".", strand, ".", "ID=" + isoform + ";Parent=g_" + geneid + "\n"])
         gtf_h.write(transcript_line)
         gff_h.write(mRNA_line)
 
@@ -609,7 +609,7 @@ def bed2gtf(bedfile):
             genename = re.search("(Cbir[A-Za-z0-9_\(\)]+)", genenames[geneid]).group(1)
         except:
             genename = geneid
-        gene_line = '\t'.join([scaf, "gffparser", "gene", str(min(genesizes[geneid])), str(max(genesizes[geneid])), '.', genestrands[geneid], '.', 'ID=' + geneid + ';Name=' + genename + '\n'])
+        gene_line = '\t'.join([scaf, "gffparser", "gene", str(min(genesizes[geneid])), str(max(genesizes[geneid])), '.', genestrands[geneid], '.', 'ID=g_' + geneid + ';Name=' + genename + '\n'])
         gff_h.write(gene_line)
 
     gff_h.close()
@@ -736,8 +736,11 @@ def reinstate_cbir(cuffcompare_gtf):
             die
 
         geneid = re.search("(Cbir[A-Za-z0-9_\(\)\.\/]*)", details['oId'])
+
         if geneid is not None:
-            details['transcript_id'] = '"%s"' % (geneid.group(1))
+            details['transcript_id'] = '"%s.%s"' % (details['gene_id'].strip('"'),geneid.group(1))
+        else:
+            details['transcript_id'] = '"%s.%s"' % (details['gene_id'].strip('"'),details['transcript_id'].strip('"'))
 
         new_attributes = 'gene_id %(gene_id)s; transcript_id %(transcript_id)s;' % details
         for attrib in details:
@@ -1264,6 +1267,10 @@ if __name__ == '__main__':
     parser.add_argument("-b", "--blastoff", action='store_true',  help="turns off blast search for investigate option")
     parser.add_argument("-m", "--methylation", action='store_true',  help="perform methylation analysis")
     parser.add_argument("-S", "--splicing", action='store_true',  help="perform alternate splicing analysis")
+    parser.add_argument("-B", "--bed2gtf", type=str, help="converts from bed to both ex.gff and gtf formats")
+    parser.add_argument("-t", "--trim", type=str,  help="trims UTRs from gff file")
+    parser.add_argument("-s", "--strip", type=str, help="removes duplicate transcripts from bed file")
+
     args = parser.parse_args()
 
     if args.investigate:
@@ -1298,4 +1305,9 @@ if __name__ == '__main__':
                 Total novel:      %d (%.2f%%)" % (summatch, summatch/grandsum, sumalt, sumalt/grandsum, sumreadj, sumreadj/grandsum, sumnovel, sumnovel/grandsum))
 
 
-
+    if args.trim:
+        trim_untranslated(args.trim)
+    if args.bed2gtf:
+        bed2gtf(args.bed2gtf)
+    if args.strip:
+        strip_duplicates(args.strip)
