@@ -344,7 +344,7 @@ def file_block(filehandle,  block, number_of_blocks=1000):
         yield filehandle.readline()
 
 
-##### FILE CONVERSIONS #####
+##### GFF FILE MANIPULATION #####
 
 def gff2gtf(gff_file):
     "converts a gff file to gtf"
@@ -404,8 +404,6 @@ def extended_gff(gff_file):
             bed_h.write(exonline)
     bed_h.close()
     gff_h.close()
-
-
 
 def make_bed(gff_file):
     """ Takes a gff_file and creates a bed format including the scaffolds/contigs that
@@ -552,10 +550,16 @@ def bed2gtf(bedfile):
 
         try:
             gene_iso    = re.search("(\w+\.\w+)\.([A-Za-z0-9_\(\)\.]*)", labels[1])
+            unexpressed = re.search("ID=(Cbir[^;]", labels[1]) # genes that are not expressed won't have the cufflinks id
         except IndexError:
             print fields[3], labels
-        geneid      = gene_iso.group(1)
-        isoform     = gene_iso.group(0)
+
+        if unexpressed == None:
+            geneid      = gene_iso.group(1)
+            isoform     = gene_iso.group(0)
+        else:
+            geneid      = unexpressed.group(1)
+            isoform     = geneid
 
         # update gene information:
         try:
@@ -604,8 +608,21 @@ def bed2gtf(bedfile):
     gff_h.close()
     gtf_h.close()
 
+def strip_duplicates(bedfile):
+    "removes duplicate gene entries, and replacing ID with the cufflinks appended Cbir ID"
+    bed_h = open(bedfile, 'rb')
+    newbed_h = open(bedfile[:-3] + "uniq.bed", 'w')
+    for line in bed_h:
+        fields = line.split()
+        if fields[12] == ".":
+            newbed_h.write("\t".join(fields[:12]) + "\n")
+            continue
+        cbirID = re.search("Cbir", fields[15])
+        if cbirID is not None:
+            newbed_h.write("\t".join(fields[12:]) + "\n")
+    bed_h.close()
+    newbed_h.close()
 
-##### GFF FILE MANIPULATION #####
 
 def parse_names(genelist, gffobj):
     "takes a gene ID or list of gene IDs and returns the gene name from the gff file"
