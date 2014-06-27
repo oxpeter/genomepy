@@ -550,16 +550,22 @@ def bed2gtf(bedfile):
 
         try:
             gene_iso    = re.search("(\w+\.\w+)\.([A-Za-z0-9_\(\)\.]*)", labels[1])
-            unexpressed = re.search("ID=(Cbir[^;]", labels[1]) # genes that are not expressed won't have the cufflinks id
+            unexpressed = re.search("ID=(Cbir[A-Za-z0-9_\(\)\.]*)", labels[0]) # genes that are not expressed won't have the cufflinks id
         except IndexError:
             print fields[3], labels
 
-        if unexpressed == None:
-            geneid      = gene_iso.group(1)
-            isoform     = gene_iso.group(0)
-        else:
+        if unexpressed is not None:
             geneid      = unexpressed.group(1)
             isoform     = geneid
+        else:
+            try:
+                geneid      = gene_iso.group(1)
+                isoform     = gene_iso.group(0)
+            except:
+                print line
+                print labels[0]
+                die
+
 
         # update gene information:
         try:
