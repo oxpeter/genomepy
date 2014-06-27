@@ -367,6 +367,46 @@ def gtf2gff(gtf_file):
     cmd = "perl /Users/POxley/scripts/Genome_Analysis/gtf2gff3.pl " + gtf_file + " > " + gff_file
     os.system(cmd)
 
+def extended_gff(gff_file):
+    "converts OGS gff file into extended gff with genes and exons"
+    gff_h = open(gff_file, 'rb')
+    bed_h = open(gff_file[:-4] + ".ex.gff", 'w')
+
+    count = 0
+    for line in gff_h:
+        count += 1
+
+        fields = line.split()
+        scaf = fields[0]
+        comment = fields[1]
+        type = fields[2]
+        start = int(fields[3])
+        end = int(fields[4])
+        score = fields[5]
+        strand = fields[6]
+        frame = fields[7]
+        definition = " ".join(fields[8:])
+
+        if type == 'mRNA':
+            geneid_search = re.search("ID=(Cbir[A-Za-z0-9_\.\(\)\/]*);", line)
+            geneid = geneid_search.group(1)
+
+            genefields = [scaf, comment, 'gene', str(start), str(end), score, \
+                        strand, frame, definition.replace('ID=','ID=g_'),"\n" ]
+            mrnaline = line[:-1] + "Parent=g_" + geneid + ";\n"
+
+            bed_h.write("\t".join(genefields))
+            bed_h.write(mrnaline)
+        if type == 'CDS':
+            geneid = re.search("Parent=(Cbir[A-Za-z0-9_\.\(\)\/]*);", line).group(1)
+            bed_h.write(line)
+            exonline = line.replace("CDS", "exon").replace("Parent=", "ID=" + geneid + "_" + str(count) + ";Parent=")
+            bed_h.write(exonline)
+    bed_h.close()
+    gff_h.close()
+
+
+
 def make_bed(gff_file):
     """ Takes a gff_file and creates a bed format including the scaffolds/contigs that
     do not have any features associated with them"""
@@ -510,7 +550,10 @@ def bed2gtf(bedfile):
         strand      = fields[5]
         labels      = fields[3].split(";")
 
-        gene_iso    = re.search("(\w+\.\w+)\.([A-Za-z0-9_\(\)\.]*)", labels[1])
+        try:
+            gene_iso    = re.search("(\w+\.\w+)\.([A-Za-z0-9_\(\)\.]*)", labels[1])
+        except IndexError:
+            print fields[3], labels
         geneid      = gene_iso.group(1)
         isoform     = gene_iso.group(0)
 
