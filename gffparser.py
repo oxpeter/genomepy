@@ -735,9 +735,9 @@ def reinstate_cbir(cuffcompare_gtf):
             print detail_list
             die
 
-        geneid = re.search("(Cbir[A-Za-z0-9_\(\)\.\/]*)", details['oId'])
+        geneid = re.search("(Cbir[A-Za-z0-9_\(\)\.\/]*)", details['nearest_ref'])
 
-        if geneid is not None:
+        if geneid is not None and details['class_code'] == "=":
             details['transcript_id'] = '"%s.%s"' % (details['gene_id'].strip('"'),geneid.group(1))
         else:
             details['transcript_id'] = '"%s.%s"' % (details['gene_id'].strip('"'),details['transcript_id'].strip('"'))
