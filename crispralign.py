@@ -67,7 +67,7 @@ def build_reference(gen_ref, pos_stats):
     ref_h = open(gen_ref, 'w')
     # extract sequences from reference genome (identified under OGS):
     for scaffold in pos_stats:
-        sequence = genematch.extractseq(scaffold, type='fa', OGS='/Volumes/Genome/Cbir.assembly.v3.0', startpos=pos_stats[scaffold][0]-1000, endpos=pos_stats[scaffold][1]+1000)
+        sequence = genematch.extractseq(scaffold, type='fa', OGS='/Volumes/antqueen/genomics/genomes/C.biroi/Cbir.assembly.v3.0', startpos=pos_stats[scaffold][0]-1000, endpos=pos_stats[scaffold][1]+1000)
         ref_h.write( ">%s\n%s\n" % (scaffold, sequence) )
 
     ref_h.close()
@@ -92,7 +92,7 @@ def read_input(in_file):
             lane_files = line.replace("#","").split()
             for id in lane_files:
                 lanes.append(id)
-        elif len(line)<2:
+        elif re.search("\w",line) is None:  # ignores blank lines
             continue
         else:
             print line
