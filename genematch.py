@@ -17,7 +17,7 @@ from scipy.stats import fisher_exact
 
 class GO_maker(object):
     "an object for quick access to all GO terms for a gene set"
-    def __init__(self, gofile='/Volumes/Genome/Genome_analysis/Gene_Ontology/Cerapachys_biroi.CE.GO.gene.list'):
+    def __init__(self, gofile='/Volumes/antqueen/genomics/experiments/analyses/BGI20120208_Genome/Gene_Ontology/Cerapachys_biroi.CE.GO.gene.list'):
         self.go_repo = {}
         self.go_dict = {}
         self.go_defs = {}
@@ -122,7 +122,7 @@ def extract_locus(fname, col_num, datacol=False):
     fobj.close()
     return scaf, gbeg, gend, gdata
 
-def snp2gene(scaffold, pos, gff="/Volumes/Genome/armyant.OGS.V1.8.4.gff"):
+def snp2gene(scaffold, pos, gff="/Volumes/antqueen/genomics/genomes/C.biroi/armyant.OGS.V1.8.4.gff"):
     """ given a scaffold and nt position, snp2gene will determine if the nt is within a
     gene, and if so, whether it is within an exon or intron"""
 
@@ -149,7 +149,7 @@ def snp2gene(scaffold, pos, gff="/Volumes/Genome/armyant.OGS.V1.8.4.gff"):
 
     return (geneid, geneloc)
 
-def locus2gene(scaflist, gbeglist, gendlist, gdatalist=False, gff="/Volumes/Genome/armyant.OGS.V1.8.4.gff", comprehensive=True ):
+def locus2gene(scaflist, gbeglist, gendlist, gdatalist=False, gff="/Volumes/antqueen/genomics/genomes/C.biroi/armyant.OGS.V1.8.4.gff", comprehensive=True ):
     """ For each locus as defined by the three input lists, locus2gene() will pull out the
     overlapping genes from the OGS gff file. If an additional list of corresponding data
     is provided, it will be appended to the results dictionary.
@@ -221,7 +221,7 @@ def findgene(fname):
         cur_gfor = gfor[result]
         cur_gsta = gsta[result]
         cur_gdif = gdif[result]
-        fobj = open("/Volumes/Genome/armyant.OGS.V1.8.3.gff")
+        fobj = open("/Volumes/antqueen/genomics/genomes/C.biroi/armyant.OGS.V1.8.4.gff")
         for line in fobj:
             col = line.split()
             if col[2] == "mRNA":
@@ -259,7 +259,7 @@ def blast_results(blast_results, num_results=10):
         if counter == 0:
             break
 
-def extractseq(geneID, type='pep', OGS='/Volumes/Genome/armyant.OGS.V1.8.6', startpos=0, endpos=-1):
+def extractseq(geneID, type='pep', OGS='/Volumes/antqueen/genomics/genomes/C.biroi/armyant.OGS.V1.8.6', startpos=0, endpos=-1):
     """ extracts sequence of geneID from the current annotations. type is cds,  pep or fasta.
     """
     geneseq = ""
@@ -283,7 +283,7 @@ def extractseq(geneID, type='pep', OGS='/Volumes/Genome/armyant.OGS.V1.8.6', sta
     return geneseq[startpos:endpos]
 
 def fly_orthologs(genelist):
-    fobj = open('/Volumes/Genome/Genome_analysis/Orthologs/BGI.orthologs.list')
+    fobj = open('/Volumes/antqueen/genomics/experiments/analyses/BGI20120208_Genome/Orthologs/BGI.orthologs.list')
     orthodict = {}
     for line in fobj:
         if re.search('Cbir_[0-9]*', line) != None and re.search('DROME', line) != None:
@@ -352,7 +352,7 @@ def go_enrichment(genelist):
 
 def cbir_to_kegg(genelist):
     "Converts Cbir gene IDs to Kegg orthologs (KOs)"
-    kegg_h = open('/Volumes/Genome/Genome_analysis/KEGG_pathways/KEGG_orthologs.list', 'rb')
+    kegg_h = open('/Volumes/antqueen/genomics/experiments/analyses/BGI20120208_Genome/KEGG_pathways/KEGG_orthologs.list', 'rb')
 
     keggd = {}
     keggcount = {}
@@ -365,13 +365,13 @@ def cbir_to_kegg(genelist):
             #keggd[line.split()[0]] = 'na'
             pass
 
-    kegglist = []
+    keggdic = {}
     for gene in genelist:
         try:
-            kegglist.append(keggd[gene])
+            keggdic[keggd[gene]] = gene
         except KeyError:
             pass
-    return len(keggd), kegglist
+    return len(keggd), keggdic
 
 def kegg_module_enrichment(genelist):
     """
@@ -385,7 +385,7 @@ def kegg_module_enrichment(genelist):
 
     #print "Creating Kegg module library"
     ## create Kegg module dictionary:
-    kmod_h = open('/Volumes/Genome/Genome_analysis/KEGG_pathways/ko00002.keg', 'rb')
+    kmod_h = open('/Volumes/antqueen/genomics/experiments/analyses/BGI20120208_Genome/KEGG_pathways/ko00002.keg', 'rb')
 
     kmodlist = []
     kmodd = {}
@@ -518,7 +518,9 @@ def kegg_module_enrichment(genelist):
     #   SUM     :   kmcount[mod]        len(keggcount) - kmcount[mod]                           len(keggcount)
     #
 
-def kegg_pathway_enrichment(genelist):
+    pass
+
+def kegg_pathway_enrichment(genelist, show_all=True, pthresh=0.01):
     """
     For  a given genelist, determines which KEGG pathways are significantly
     enriched. Returns both module enrichment P-values, and upper-level classification
@@ -529,7 +531,7 @@ def kegg_pathway_enrichment(genelist):
     print "genelist size: %-4d KO size: %d" % (len(genelist), len(kegglist))
 
     ## create Kegg module dictionary:
-    kmod_h = open('/Volumes/Genome/Genome_analysis/KEGG_pathways/ko00001.keg', 'rb')
+    kmod_h = open('/Volumes/antqueen/genomics/experiments/analyses/BGI20120208_Genome/KEGG_pathways/ko00001.keg', 'rb')
 
     ## kmod terms (copied from kegg_module_enrichment() ), are used here to capture the
     ## kegg pathway (indicated in ko00001.keg by [PATH:ko#####] )
@@ -583,19 +585,21 @@ def kegg_pathway_enrichment(genelist):
     dipcount = {}               # possibly unnecessary
     kmodenrich = {}
     kmododds   = {}
+    gene_kos   = {}
 
     for mod in kmodlist:
         for ko in kegglist:
             if ko not in kmodd: # some KOs do not exist in a module.
                 pass
             elif mod in kmodd[ko]:
+                gene_kos[kegglist[ko]] = ko
                 dip += 1
         dipcount[mod] = dip     # possibly unnecessary
         oddrat, pval = fisher_exact([
             [dip, len(kegglist) - dip],
             [kmcount[mod]-dip, num_ko - len(kegglist) - kmcount[mod] + dip]
         ], alternative='greater')
-        if pval < 0.1 and len(kegglist) >= 1:
+        if pval < pthresh and len(kegglist) >= 1:
             print "%s\n         \
             In Path  Not in Path\n\
             DEG    :  %-7d %d\n\
@@ -616,7 +620,7 @@ def kegg_pathway_enrichment(genelist):
     #   SUM     :   kmcount[mod]        len(keggcount) - kmcount[mod]                           len(keggcount)
     #
 
-    return kmodenrich
+    return kmodenrich, gene_kos
 ########################################################################
 def mainprog():
     print "welcome back to python"
@@ -634,9 +638,9 @@ def mainprog():
     for gene in flylogs:
         print flylogs[gene]
 
-    Cbi2 = extractseq('scaffold176',type='fa', OGS='/Volumes/Genome/Cbir.assembly.v3.0', startpos=92000, endpos=96000)
-    Cbi3 = extractseq('scaffold197',type='fa', OGS='/Volumes/Genome/Cbir.assembly.v3.0', startpos=1552000, endpos=1557000)
-    Cbi6 = extractseq('scaffold314',type='fa', OGS='/Volumes/Genome/Cbir.assembly.v3.0', startpos=347000, endpos=352000)
+    Cbi2 = extractseq('scaffold176',type='fa', OGS='/Volumes/antqueen/genomics/genomes/C.biroi/Cbir.assembly.v3.0', startpos=92000, endpos=96000)
+    Cbi3 = extractseq('scaffold197',type='fa', OGS='/Volumes/antqueen/genomics/genomes/C.biroi/Cbir.assembly.v3.0', startpos=1552000, endpos=1557000)
+    Cbi6 = extractseq('scaffold314',type='fa', OGS='/Volumes/antqueen/genomics/genomes/C.biroi/Cbir.assembly.v3.0', startpos=347000, endpos=352000)
     crispr_f = '/Volumes/Genome/CRISPR/mini_genome.fa'
     crispr_h = open(crispr_f, 'w')
     crispr_h.write( ">scaf176 Cbi2\n%s\n>scaf197 Cbi3\n%s\n>scaf314 Cbi6\n%s\n" % (Cbi2, Cbi3, Cbi6) )
@@ -694,5 +698,5 @@ if __name__ == '__main__':
     genelist = [orco, itr, site1]
 
     for site in genelist:
-        sequence = extractseq(site[0], type='fa', OGS='/Volumes/Genome/Cbir.assembly.v3.0', startpos=site[1]-1000, endpos=site[2]+1000)
+        sequence = extractseq(site[0], type='fa', OGS='/Volumes/antqueen/genomics/genomes/C.biroi/Cbir.assembly.v3.0', startpos=site[1]-1000, endpos=site[2]+1000)
         print ">%s\n%s\n" % (site[0], sequence)
