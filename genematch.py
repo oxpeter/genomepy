@@ -417,7 +417,7 @@ def cbir_to_pathway(geneobj):
     "given a gene (or list of genes), returns the kegg pathways associated"
 
     gene_ko = {}
-    if type(geneobj) is list:
+    if type(geneobj) is list or type(geneobj) is dict:
         dictlen, kodic = cbir_to_kegg(geneobj, reversedic=True)
         for gene in geneobj:
             gene_ko[gene] = ko_to_pathway(kodic[gene])
@@ -674,6 +674,32 @@ def kegg_pathway_enrichment(genelist, show_all=True, pthresh=0.01):
     #
 
     return kmodenrich, gene_kos
+
+def cbir_ncbi(geneobj):
+    ncbi_h = open('/Volumes/antqueen/genomics/genomes/C.biroi/armyant.OGS.1.8.6.ncbi.annotated.fasta', 'rb')
+
+    ncbi_d = {}
+    for line in ncbi_h:
+        defsearch = re.search("\[(Cbir[^\s]*)\]", line)
+        if defsearch is not None:
+            ncbi_d[defsearch.group(1)] = line.strip()[1:]
+
+    gene_gi = {}
+    if type(geneobj) is list or type(geneobj) is dict:
+        for gene in geneobj:
+            try:
+                gene_gi[gene] = ncbi_d[gene]
+            except:
+                gene_gi[gene] = 'no NCBI item'
+    else:   # assume it is a single gene:
+        try:
+            gene_gi[geneobj] = ncbi_d[gene]
+        except:
+            gene_gi[geneobj] = 'no NCBI item'
+    return gene_gi
+
+
+
 
 
 ########################################################################
