@@ -298,6 +298,7 @@ def gff_init():
     pass
 
 
+
 ######## Gene Ontology and KEGG pathway analyses ######################
 def go_finder(genelist):
     pass
@@ -350,7 +351,7 @@ def go_enrichment(genelist):
 
     return gopval
 
-def cbir_to_kegg(genelist):
+def cbir_to_kegg(genelist, reversedic=False):
     "Converts Cbir gene IDs to Kegg orthologs (KOs)"
     kegg_h = open('/Volumes/antqueen/genomics/experiments/analyses/BGI20120208_Genome/KEGG_pathways/KEGG_orthologs.list', 'rb')
 
@@ -366,12 +367,64 @@ def cbir_to_kegg(genelist):
             pass
 
     keggdic = {}
-    for gene in genelist:
-        try:
-            keggdic[keggd[gene]] = gene
-        except KeyError:
-            pass
+
+    if reversedic:  # create {geneid:ko}
+        for gene in genelist:
+            try:
+                keggdic[gene] = keggd[gene]
+            except KeyError:
+                keggdic[gene] = None
+
+    else:       # create {ko:geneid}
+        for gene in genelist:
+            try:
+                keggdic[keggd[gene]] = gene
+            except KeyError:
+                pass
     return len(keggd), keggdic
+
+def ko_to_pathway(ko):
+    "given a kegg ortholog (ko), returns the kegg pathway it's part of"
+    kmod_h = open('/Volumes/antqueen/genomics/experiments/analyses/BGI20120208_Genome/KEGG_pathways/ko00001.keg', 'rb')
+
+    koterm = ''
+    kdescription = 'no description found'
+    for line in kmod_h:
+        if line[0] == 'C':     # Find details of Kegg Pathway
+            try:
+                ksearch = re.search("C +([0-9]*) *(.*)\[PATH", line)
+                pathwayid = ksearch.group(1)
+                pathwaydef = ksearch.group(2)
+            except:
+                pathwayid = 'cannot parse'
+                pathwaydef = 'cannot parse'
+
+        elif line[0] == 'D':    # Find details of Kegg term
+            ksearch = re.search("(K[0-9]*) *(.*) \[?", line)
+            try:
+                koterm = ksearch.group(1)
+                kodesc = ksearch.group(2)
+            except:
+                koterm = 'cannot parse'
+                kodesc = 'cannot parse'
+
+        if ko == koterm:
+            kdescription = '%s \n(in %s pathway)' % (kodesc, pathwaydef)
+
+    return kdescription
+
+def cbir_to_pathway(geneobj):
+    "given a gene (or list of genes), returns the kegg pathways associated"
+
+    gene_ko = {}
+    if type(geneobj) is list:
+        dictlen, kodic = cbir_to_kegg(geneobj, reversedic=True)
+        for gene in geneobj:
+            gene_ko[gene] = ko_to_pathway(kodic[gene])
+    else:   # assume it is a single gene:
+        dictlen, kodic = cbir_to_kegg([geneobj], reversedic=True)
+        gene_ko[geneobj] = ko_to_pathway(kodic[geneobj])
+    return gene_ko
 
 def kegg_module_enrichment(genelist):
     """
@@ -621,6 +674,8 @@ def kegg_pathway_enrichment(genelist, show_all=True, pthresh=0.01):
     #
 
     return kmodenrich, gene_kos
+
+
 ########################################################################
 def mainprog():
     print "welcome back to python"
