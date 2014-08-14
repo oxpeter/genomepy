@@ -25,7 +25,7 @@ import genematch
 class Splicer(object):
     """a class that allows analysis of splice junctions from a gff file and tophat
     junction files"""
-    def __init__(self, gff_file="/Volumes/Genome/armyant.OGS.V1.8.6_lcl.gff", chosenscaffold='All'):
+    def __init__(self, gff_file="/Volumes/antqueen/genomics/genomes/C.biroi/armyant.OGS.V1.8.6_lcl.gff", chosenscaffold='All'):
         ## construct canonical and alternate splice junctions from gff file:
         ## saved in 2 dictionaries: canonical = { 'scaffold2':{(5292,5344):'cbir_02775',():,():,():}
         ##                          alternate = { 'scaffold2':{(5292,5671):'cbir_02775',():,():,():}
@@ -196,7 +196,7 @@ class Splicer(object):
 
 class My_gff(object):
     "an object for quick assessment of where a GENE/SNP lies"
-    def __init__(self, gff_file="/Volumes/Genome/armyant.OGS.V1.8.6.gff"):
+    def __init__(self, gff_file="/Volumes/antqueen/genomics/genomes/C.biroi/armyant.OGS.V1.8.6.gff"):
 
         self.genedict = {}
         self.genecount = 0
@@ -659,7 +659,7 @@ def parse_names(genelist, gffobj):
 
     return output_dict
 
-def assemble_dict(in_file="/Volumes/Genome/armyant.OGS.V1.8.6.gff", in_seq_file="/Volumes/Genome/Cbir.assembly.v3.0.fa", features_only=False):
+def assemble_dict(in_file="/Volumes/antqueen/genomics/genomes/C.biroi/armyant.OGS.V1.8.6.gff", in_seq_file="/Volumes/Genome/Cbir.assembly.v3.0.fa", features_only=False):
     """ Takes a gff file and the genome assembly and creates a SeqRecord dictionary.
 
     INPUT:
@@ -869,7 +869,7 @@ def get_sequence(scaf, gff_dict, feature):
     sequence.alphabet = IUPAC.ambiguous_dna
     return sequence
 
-def parse_go(gene, gofile='/Volumes/Genome/Genome_analysis/Gene_Ontology/armyant.OGS.V1.5.GOterms.list'):
+def parse_go(gene, gofile='/Volumes/antqueen/genomics/experiments/analyses/BGI20120208_Genome/Gene_Ontology/armyant.OGS.V1.5.GOterms.list'):
     "for a given gene or genelist, returns a dictionary of all GO terms associated with the gene"
 
     # make dictionary of go terms:
@@ -915,7 +915,7 @@ def parse_go(gene, gofile='/Volumes/Genome/Genome_analysis/Gene_Ontology/armyant
 ##### INITIATION & MISC #####
 
 def prime_variables():
-    return "/Volumes/Genome/armyant.OGS.V1.8.5.gff", "/Volumes/Genome/Cbir.assembly.v3.0.fa"
+    return "/Volumes/antqueen/genomics/genomes/C.biroi/armyant.OGS.V1.8.5.gff", "/Volumes/Genome/Cbir.assembly.v3.0.fa"
 
 def mutate_codon(old_seq, frame, new_nt):
     """Given a Bio.seq.seq sequence, a new nucleotide, and its position in the sequence,
@@ -944,8 +944,8 @@ def test():
     """ The basic commands I have been running of '__main__'
     """
 
-    in_file = "/Volumes/Genome/armyant.OGS.V1.8.5.gff"
-    out_file = "/Volumes/Genome/armyant.OGS.V1.8.5.gff"
+    in_file = "/Volumes/antqueen/genomics/genomes/C.biroi/armyant.OGS.V1.8.5.gff"
+    out_file = "/Volumes/antqueen/genomics/genomes/C.biroi/armyant.OGS.V1.8.5.gff"
     in_seq_file = "/Volumes/Genome/Cbir.assembly.v3.0.fa"
 
 
@@ -1035,7 +1035,7 @@ def create_polymorphism_files():
 
     print "All done!"
 
-def find_next_isoform(gene_id, gff_file="/Volumes/Genome/armyant.OGS.V1.8.5.gff"):
+def find_next_isoform(gene_id, gff_file="/Volumes/antqueen/genomics/genomes/C.biroi/armyant.OGS.V1.8.5.gff"):
     "returns the next number in the list of isoforms for a given gene"
     isoforms = []
 
@@ -1125,6 +1125,34 @@ def separate_cuffjoined(gtf_file, dblid):
     print count
     return newfile
 
+def make_a_list(geneobj, col_num=0):
+    """given a path, list, dictionary or string, convert into a list of genes.
+    col_num specifies the column from which to extract the gene list from."""
+
+    # genefile can be given as a list of genes (say, from find_degs()... ), or as
+    # a path to a file containing a list of genes.
+    # The following builds a dictionary of genes from either input:
+    if type(geneobj) is list:   # allows filtering from hicluster generated list of results.
+        genelist = {}.fromkeys(geneobj,1)
+    elif type(geneobj) is dict:
+        genelist = geneobj # this of course will only work if the keys are the genes!
+    elif type(geneobj) is str:   # assuming a filepath...
+        if re.search("/",geneobj) is None:
+            genelist = {}.fromkeys(geneobj.split(','),1)
+        else:   # is a file path
+            genefile_h = open(geneobj, 'rb')
+            genelist = {}   # will be a dict of names { 'Cbir01255':1, 'CbirVgq':1, ... }
+                            # used a dictionary to automatically remove any name duplications
+            filegen = [ line.split() for line in genefile_h ]
+
+            genefile_h.close()
+
+            for colset in filegen:
+                genelist[colset[col_num]]=1
+
+    return genelist
+
+
 
 ##### INTEGRATED PROGRAMS ##################
 
@@ -1135,9 +1163,7 @@ def investigate(args, doblast=True):
     print "assembing my gff"
     mygff = My_gff(args.gff_file)
 
-    genefile_h = open(args.input_file, 'rb')
-    genelist = [ line.split()[0] for line in genefile_h]
-    genefile_h.close()
+    genelist = make_a_list(args.input_file)
 
     reportfile_h = open(args.output_file, 'w')
 
@@ -1176,8 +1202,6 @@ def investigate(args, doblast=True):
         bar.update(count)
     bar.finish()
     reportfile_h.close()
-
-
 
 def methylation_analysis(args):
     print "assembling gffobj..."
@@ -1260,9 +1284,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Various GFF and gene-file manipulations")
     parser.add_argument("-o", "--output_file", type=str, default="output.list", help="File to save results to")
     parser.add_argument("-i", "--input_file", type=str,  help="File to analyse")
-    parser.add_argument("-g", "--gff_file", type=str, default="/Volumes/Genome/armyant.OGS.V1.8.6_lcl.gff", help="GFF file for analyses")
+    parser.add_argument("-g", "--gff_file", type=str, default="/Volumes/antqueen/genomics/genomes/C.biroi/armyant.OGS.V1.8.6_lcl.gff", help="GFF file for analyses")
     parser.add_argument("-f", "--genome_file", type=str, default="/Volumes/Genome/Cbir.assembly.v3.0_gi.fa", help="Genome fasta file for analyses")
-    parser.add_argument("-G", "--GO_file", type=str, default='/Volumes/Genome/Genome_analysis/Gene_Ontology/armyant.OGS.V1.5.GOterms.list', help="GO file for analyses")
+    parser.add_argument("-G", "--GO_file", type=str, default='/Volumes/antqueen/genomics/experiments/analyses/BGI20120208_Genome/Gene_Ontology/armyant.OGS.V1.5.GOterms.list', help="GO file for analyses")
     parser.add_argument("-I", "--investigate", action='store_true',  help="analyse a list of genes")
     parser.add_argument("-b", "--blastoff", action='store_true',  help="turns off blast search for investigate option")
     parser.add_argument("-m", "--methylation", action='store_true',  help="perform methylation analysis")
