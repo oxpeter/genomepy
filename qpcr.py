@@ -190,8 +190,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Creates qPCR appropriate primers from a list of genes")
     parser.add_argument("-o", "--output_file", type=str, default="p3_output.info", help="File to save results to")
     parser.add_argument("-i", "--input_file", type=str,  help="File to analyse")
-    parser.add_argument("-g", "--gff_file", type=str, default="/Volumes/Genome/armyant.OGS.V1.8.6.gff", help="GFF file for analyses")
-    parser.add_argument("-c", "--cds_file", type=str, default="/Volumes/Genome/armyant.OGS.V1.8.6.cds", help="Genome fasta file for analyses")
+    parser.add_argument("-g", "--gff_file", type=str, default="/Volumes/antqueen/genomics/genomes/C.biroi/armyant.OGS.V1.8.6.gff", help="GFF file for analyses")
+    parser.add_argument("-c", "--cds_file", type=str, default="/Volumes/antqueen/genomics/genomes/C.biroi/armyant.OGS.V1.8.6.cds", help="Genome fasta file for analyses")
     parser.add_argument("-P", "--PCR", type=str, help="file containing primer pairs for analysis")
     args = parser.parse_args()
 

@@ -77,23 +77,23 @@ def blastseq(seq, seqnames=None, inpath='/Users/POxley/blastinput.tmp' , outpath
 
     if outfmt == 'tab':
         # for tabular output:
-        blastcmd_tab = 'blastn -query ' + inpath + ' -db /Volumes/Genome/BLAST_databases/nucleotide/Cbir.v3.0 -outfmt 6 -word_size 7 -evalue 1000000 -out ' + outpath
+        blastcmd_tab = 'blastn -query ' + inpath + ' -db /Volumes/antqueen/genomics/indices/BLAST_databases/nucleotide/Cbir.v3.0 -outfmt 6 -word_size 7 -evalue 1000000 -out ' + outpath
         os.system(blastcmd_tab)
 
     elif outfmt == 'xml':
         # for xml output:
-        blastcmd_xml = 'blastn -query ' + inpath + ' -db /Volumes/Genome/BLAST_databases/nucleotide/Cbir.v3.0 -outfmt 5 -word_size 7 -evalue 1000000 -out ' + outpath
+        blastcmd_xml = 'blastn -query ' + inpath + ' -db /Volumes/antqueen/genomics/indices/BLAST_databases/nucleotide/Cbir.v3.0 -outfmt 5 -word_size 7 -evalue 1000000 -out ' + outpath
         os.system(blastcmd_xml)
 
     else:
         # if you want blast results that are viewer friendly:
         blastcmd_vis = 'blastn -query ' + inpath + \
-            ' -db /Volumes/Genome/BLAST_databases/nucleotide/Cbir.v3.0 -out ' + \
+            ' -db /Volumes/antqueen/genomics/indices/BLAST_databases/nucleotide/Cbir.v3.0 -out ' + \
             ' -out ' + outpath + \
             ' -outfmt 3 -word_size 7 -evalue 1000000'
         os.system(blastcmd_vis)
 
-def findnearest(scaffold, hitpos, gff_p="/Volumes/Genome/armyant.OGS.V1.8.6.gff"):
+def findnearest(scaffold, hitpos, gff_p="/Volumes/antqueen/genomics/genomes/C.biroi/armyant.OGS.V1.8.6.gff"):
     gffdict = {}
     gffobj = open(gff_p, 'rb')
     for line in gffobj:
@@ -122,7 +122,7 @@ def findnearest(scaffold, hitpos, gff_p="/Volumes/Genome/armyant.OGS.V1.8.6.gff"
     return downstream, upstream
 
 def scaflength(scaffold):
-    scaffseq = genematch.extractseq(scaffold, type='fa', OGS='/Volumes/Genome/Cbir.assembly.v3.0')
+    scaffseq = genematch.extractseq(scaffold, type='fa', OGS='/Volumes/antqueen/genomics/genomes/C.biroi/Cbir.assembly.v3.0')
     return len(scaffseq)
 
 def showblast(filename='/Users/POxley/blastoutput.tmp', threshold=80, gaps_allowed=3, shownearest=True, seq="_unknown_", out_path="/Users/POxley/Documents/Analysis/Data/People/Buck/Second_Round/results.info"):
@@ -185,7 +185,7 @@ if __name__ == '__main__':
 
     ##### CLI Argument Parser #####
     parser = argparse.ArgumentParser(description="Finds and assesses CRISPR sites")
-    parser.add_argument("-s", "--sequence_file", type=str, dest="seq_path", default='/Volumes/Genome/Cbir.assembly.v3.0_singleline.fa', help="Specify the .fa file containing the sequence to be searched")
+    parser.add_argument("-s", "--sequence_file", type=str, dest="seq_path", default='/Volumes/antqueen/genomics/genomes/C.biroi/Cbir.assembly.v3.0_singleline.fa', help="Specify the .fa file containing the sequence to be searched")
     parser.add_argument("-p", "--pattern", type=str, dest="pattern", default='([Gg][Gg].[Gg][Gg].{16}.[Gg][Gg])|([Cc][Cc].{19}[Cc][Cc].[Cc][Cc])', help="Specify the regular expression string to search with.")
     parser.add_argument("-o", "--output_file", type=str, dest="out_path", default="/Users/POxley/Documents/Analysis/Data/People/Buck/crispr.info", help="Specify a file in which to save results.")
     parser.add_argument("-g", "--gaps_allowed", type=int, dest="gaps_allowed", default=0, help="Specify the number of gaps allowed in reported sequence matches.\nDefault = 0")
