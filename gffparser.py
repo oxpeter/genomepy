@@ -419,7 +419,7 @@ def make_bed(gff_file):
 
     # create dictionary of scaffolds not annotated, and their sizes
     missing_dict = {}
-    assembly_handle = open("/Volumes/Genome/Cbir.assembly.v3.0_singleline.fa", 'r')
+    assembly_handle = open("/Volumes/antqueen/genomics/genomes/C.biroi/Cbir.assembly.v3.0_singleline.fa", 'r')
     for line in assembly_handle:
         def_search = re.search('>(lcl\|[a-zC0-9]*)', line)
         line_len = len(line)
@@ -659,7 +659,7 @@ def parse_names(genelist, gffobj):
 
     return output_dict
 
-def assemble_dict(in_file="/Volumes/antqueen/genomics/genomes/C.biroi/armyant.OGS.V1.8.6.gff", in_seq_file="/Volumes/Genome/Cbir.assembly.v3.0.fa", features_only=False):
+def assemble_dict(in_file="/Volumes/antqueen/genomics/genomes/C.biroi/armyant.OGS.V1.8.6.gff", in_seq_file="/Volumes/antqueen/genomics/genomes/C.biroi/Cbir.assembly.v3.0.fa", features_only=False):
     """ Takes a gff file and the genome assembly and creates a SeqRecord dictionary.
 
     INPUT:
@@ -915,7 +915,7 @@ def parse_go(gene, gofile='/Volumes/antqueen/genomics/experiments/analyses/BGI20
 ##### INITIATION & MISC #####
 
 def prime_variables():
-    return "/Volumes/antqueen/genomics/genomes/C.biroi/armyant.OGS.V1.8.5.gff", "/Volumes/Genome/Cbir.assembly.v3.0.fa"
+    return "/Volumes/antqueen/genomics/genomes/C.biroi/armyant.OGS.V1.8.5.gff", "/Volumes/antqueen/genomics/genomes/C.biroi/Cbir.assembly.v3.0.fa"
 
 def mutate_codon(old_seq, frame, new_nt):
     """Given a Bio.seq.seq sequence, a new nucleotide, and its position in the sequence,
@@ -946,7 +946,7 @@ def test():
 
     in_file = "/Volumes/antqueen/genomics/genomes/C.biroi/armyant.OGS.V1.8.5.gff"
     out_file = "/Volumes/antqueen/genomics/genomes/C.biroi/armyant.OGS.V1.8.5.gff"
-    in_seq_file = "/Volumes/Genome/Cbir.assembly.v3.0.fa"
+    in_seq_file = "/Volumes/antqueen/genomics/genomes/C.biroi/Cbir.assembly.v3.0.fa"
 
 
     # set scaffold and SNP to check:
@@ -993,7 +993,7 @@ def create_polymorphism_files():
     snp_dict = {}
 
     print "Unpickling NSL_PILSIP genotypes..."
-    aGtypes, iGtypes = unpickle_gtypes('/Volumes/Genome/RAD-Tags/NSL_PILSIP.RD_15')
+    aGtypes, iGtypes = unpickle_gtypes('/Volumes/antqueen/genomics/genomes/C.biroi/RAD-Tags/NSL_PILSIP.RD_15')
 
     print "Scanning for polymorphisms..."
     for scaf, pos in aGtypes['LINEC']:
@@ -1017,10 +1017,10 @@ def create_polymorphism_files():
 
     print len(snp_dict), "results found"
     print "Pickling results..."
-    pickle_jar(snp_dict, "/Volumes/Genome/RAD-Tags/LineC_polymorphisms")
+    pickle_jar(snp_dict, "/Volumes/antqueen/genomics/genomes/C.biroi/RAD-Tags/LineC_polymorphisms")
 
     print "writing results to tab delimited file..."
-    wobj = open( "/Volumes/Genome/RAD-Tags/LineC_polymorphisms.list", 'w' )
+    wobj = open( "/Volumes/antqueen/genomics/genomes/C.biroi/RAD-Tags/LineC_polymorphisms.list", 'w' )
     wobj.write("Scaffold\tPos\tAccession\tCDS_pos (%)\tPolymorphism1\tPolymorphism2\n")
     for scaf, pos, id, cds_len, cds_pos in snp_dict:
         if str(snp_dict[(scaf, pos, id, cds_len, cds_pos)][0][1]) == str(snp_dict[(scaf, pos, id, cds_len, cds_pos)][1][1]) and str(snp_dict[(scaf, pos, id, cds_len, cds_pos)][0][1]) == str(snp_dict[(scaf, pos, id, cds_len, cds_pos)][2][1]):
@@ -1052,7 +1052,7 @@ def find_next_isoform(gene_id, gff_file="/Volumes/antqueen/genomics/genomes/C.bi
 
 ##### FASTA FILE FUNCTIONS #####
 
-def count_chromosomes(assembly="/Volumes/Genome/Cbir.assembly.v3.0_gi.fa"):
+def count_chromosomes(assembly="/Volumes/antqueen/genomics/genomes/C.biroi/Cbir.assembly.v3.0_gi.fa"):
     "uses fasta file of genome to produce tab delimited list of chromosomes and their size"
     newfile = os.path.splitext(assembly)[0] + ".chrom.list"
     newfile_h = open(newfile, 'w')
@@ -1285,7 +1285,7 @@ if __name__ == '__main__':
     parser.add_argument("-o", "--output_file", type=str, default="output.list", help="File to save results to")
     parser.add_argument("-i", "--input_file", type=str,  help="File to analyse")
     parser.add_argument("-g", "--gff_file", type=str, default="/Volumes/antqueen/genomics/genomes/C.biroi/armyant.OGS.V1.8.6_lcl.gff", help="GFF file for analyses")
-    parser.add_argument("-f", "--genome_file", type=str, default="/Volumes/Genome/Cbir.assembly.v3.0_gi.fa", help="Genome fasta file for analyses")
+    parser.add_argument("-f", "--genome_file", type=str, default="/Volumes/antqueen/genomics/genomes/C.biroi/Cbir.assembly.v3.0_gi.fa", help="Genome fasta file for analyses")
     parser.add_argument("-G", "--GO_file", type=str, default='/Volumes/antqueen/genomics/experiments/analyses/BGI20120208_Genome/Gene_Ontology/armyant.OGS.V1.5.GOterms.list', help="GO file for analyses")
     parser.add_argument("-I", "--investigate", action='store_true',  help="analyse a list of genes")
     parser.add_argument("-b", "--blastoff", action='store_true',  help="turns off blast search for investigate option")
@@ -1306,7 +1306,7 @@ if __name__ == '__main__':
     if args.splicing:
         trial = Splicer()
         print trial
-        bedfile = '/Volumes/Genome/transcriptomes/BroodSwap/controls/C16/Tophat/tophat_F2_20131210/junctions.bed'
+        bedfile = '/Volumes/antqueen/genomics/genomes/C.biroi/transcriptomes/BroodSwap/controls/C16/Tophat/tophat_F2_20131210/junctions.bed'
         print "scaffold                 canonical   alt  readj  novel"
         sumalt = 0
         sumreadj = 0
