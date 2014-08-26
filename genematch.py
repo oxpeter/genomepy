@@ -676,7 +676,7 @@ def kegg_pathway_enrichment(genelist, show_all=True, pthresh=0.01):
     return kmodenrich, gene_kos
 
 def cbir_ncbi(geneobj):
-    ncbi_h = open('/Volumes/antqueen/genomics/genomes/C.biroi/armyant.OGS.1.8.6.ncbi.annotated.fasta', 'rb')
+    ncbi_h = open('/Volumes/antqueen/genomics/genomes/C.biroi/armyant.OGS.1.8.6.ncbi.annotated.pep', 'rb')
 
     ncbi_d = {}
     for line in ncbi_h:
