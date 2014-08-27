@@ -19,6 +19,7 @@ import progressbar              # from Nilton Volpato
 
 import gff2bed2
 import genematch
+import config
 
 ####### CLASSES ############################################################
 
@@ -1296,6 +1297,8 @@ if __name__ == '__main__':
     parser.add_argument("-s", "--strip", type=str, help="removes duplicate transcripts from bed file")
 
     args = parser.parse_args()
+
+    dbpaths = config.import_paths()
 
     if args.investigate:
         investigate(args, doblast=not(args.blastoff))

@@ -99,6 +99,7 @@ def construct_pathways(config_file):
     return pathway_dict
 
 def import_paths():
+    print __file__
     config_file = os.path.dirname(__file__) + "/pathways.config"
     if os.path.exists(config_file):
         pathway_dict = read_pathways(config_file)
