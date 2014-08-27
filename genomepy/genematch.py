@@ -353,7 +353,7 @@ def go_enrichment(genelist):
 
 def cbir_to_kegg(genelist, reversedic=False):
     "Converts Cbir gene IDs to Kegg orthologs (KOs)"
-    kegg_h = open('/Volumes/antqueen/genomics/experiments/analyses/BGI20120208_Genome/KEGG_pathways/KEGG_orthologs.list', 'rb')
+    kegg_h = open('/Volumes/antqueen/genomics/experiments/analyses/BGI20120208_Genome/KEGG_orthologs/KEGG_orthologs.list', 'rb')
 
     keggd = {}
     keggcount = {}
@@ -385,7 +385,7 @@ def cbir_to_kegg(genelist, reversedic=False):
 
 def ko_to_pathway(ko):
     "given a kegg ortholog (ko), returns the kegg pathway it's part of"
-    kmod_h = open('/Volumes/antqueen/genomics/experiments/analyses/BGI20120208_Genome/KEGG_pathways/ko00001.keg', 'rb')
+    kmod_h = open('/Volumes/antqueen/genomics/experiments/analyses/BGI20120208_Genome/KEGG_orthologs/ko00001.keg', 'rb')
 
     koterm = ''
     kdescription = 'no description found'

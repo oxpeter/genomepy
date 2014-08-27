@@ -12,11 +12,12 @@ import os
 import re
 from subprocess import Popen, PIPE
 from operator import itemgetter
-
+from pkg_resources import resource_filename, resource_string
+#import pkgutil
 
 def read_pathways(config_file):
     pathway_dict = {}
-    config_h = open(config_file, 'rb')
+    config_h = open(resource_filename('genomepy', config_file), 'rb')
     config_g = ( (line.split()[0], line.split()[1]) for line in config_h )
     for fileid, pathway in config_g:
         pathway_dict[fileid] = pathway
@@ -77,7 +78,7 @@ def construct_pathways(config_file):
     pathway_dict['gff'] = find_latest(filelist, 'OGS', "gff") #
     pathway_dict['cds'] = find_latest(filelist, 'OGS', 'cds')
     pathway_dict['pep'] = find_latest(filelist, 'OGS', 'pep')
-    pathway_dict['gtf'] = find_latest(filelist, 'OGS', 'gtf')    
+    pathway_dict['gtf'] = find_latest(filelist, 'OGS', 'gtf')
     pathway_dict['gff'] = find_latest(filelist, 'OGS', 'lcl.gff')
     pathway_dict['lclcds'] = find_latest(filelist, 'OGS', 'lcl.cds')
     pathway_dict['lclpep'] = find_latest(filelist, 'OGS', 'lcl.pep')
@@ -87,21 +88,27 @@ def construct_pathways(config_file):
     # get files for other purposes:
     kegg_patt = '1\.keg'
     orthologs_patt = 'BGI\.orthologs\.list'
-    for file in filelist:   
+    for file in filelist:
         kegg_h = re.search(kegg_patt, file)
         ortho_h = re.search(orthologs_patt, file)
-        if kegg_h is not None:  
+        if kegg_h is not None:
             pathway_dict['kegg'] = file
         elif ortho_h is not None:
             pathway_dict['ortho'] = file
-    
-    write_config(pathway_dict, config_file)     
+
+    write_config(pathway_dict, config_file)
     return pathway_dict
 
 def import_paths():
-    print __file__
-    config_file = os.path.dirname(__file__) + "/pathways.config"
-    if os.path.exists(config_file):
+    #config_file = pkgutil.get_data('genomepy', 'data/pathways.cfg')
+    #print config_file
+    config_str = resource_string('genomepy', 'data/pathways.cfg')
+    nothing_str = resource_string('genomepy', 'data/nothing.cfg')
+    configf_file = resource_filename('genomepy', 'data/pathways.cfg')
+    nothingf_file = resource_filename('genomepy', 'data/nothing.cfg')
+
+    print "%r\n%r\n%r\n%r" % (config_str, nothing_str, configf_file, nothingf_file)
+    if config_file is not None:
         pathway_dict = read_pathways(config_file)
     else:
         pathway_dict = construct_pathways(config_file)

@@ -81,7 +81,7 @@ def binomial_prob(all1, all2, cumulative=True):
                 print "Could not calculate. n = %d\tnCr = %d\texp = %e" % (n, nCr, exp)
                 Prob = None
         cumsum = Prob
-        
+
     return cumsum
 
 def find_ratios(file1):
@@ -427,19 +427,19 @@ if __name__ == '__main__':
 
         ## FISHERS EXACT TEST:
         if args.fishers:
-        all_loci = compare_allele_ratios(args.vcf_file, args.ratio_file, gff_obj)
-        print "%d loci found." % (len(all_loci))
-        newfile = args.vcf_file + "_sig_loci.fishers.list"
-        fishers_output(all_loci, newfile)
-        print "### Fisher's Exact Test analysis complete ###\n"
+            all_loci = compare_allele_ratios(args.vcf_file, args.ratio_file, gff_obj)
+            print "%d loci found." % (len(all_loci))
+            newfile = args.vcf_file + "_sig_loci.fishers.list"
+            fishers_output(all_loci, newfile)
+            print "### Fisher's Exact Test analysis complete ###\n"
 
         ## BINOMIAL ANALYSIS:
         if args.binomial:
-        all_loci = compare_allele_ratios_binomial(args.vcf_file, args.ratio_file, gff_obj, makeplot=True)
-        print "%d loci found." % (len(all_loci))
-        newfile = args.vcf_file + "_sig_loci.binomial.list"
-        binary_out(all_loci, newfile)
-        print "### Binary Test analysis complete ###\n"
+            all_loci = compare_allele_ratios_binomial(args.vcf_file, args.ratio_file, gff_obj, makeplot=True)
+            print "%d loci found." % (len(all_loci))
+            newfile = args.vcf_file + "_sig_loci.binomial.list"
+            binary_out(all_loci, newfile)
+            print "### Binary Test analysis complete ###\n"
 
         ## look for genes with all loci with biased expression:
         #newfile = args.vcf_file + "_all_loci.binary.list"

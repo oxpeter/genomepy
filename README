@@ -7,8 +7,19 @@
 This is a set of python modules that allows analysis of local genome data for use with microsatellite analysis, PCR creation or CRISPR analysis. A few tools also have been added which allow interaction with some of NCBI's web tools.
 
 Prerequisites:
-crispralign requires pysam and argparse python modules 
-crispralign also requires samtools, gsnap and pysamstats
+A fairly large number of other programs are needed for the full suite to work:
+pysam
+argparse
+samtools
+gsnap
+pysamstats
+biopython
+if you're not using genematch or crispralign, then you may be able to get away 
+with not also installing these modules.
 
-genematch requires the biopython python module
+
+INSTALLATION:
+As of version 1.0, it should be possible to use the following for installation:
+
+python setup.py install
 
