@@ -13,6 +13,7 @@ import re
 from subprocess import Popen, PIPE
 from operator import itemgetter
 
+
 def read_pathways(config_file):
     pathway_dict = {}
     config_h = open(config_file, 'rb')
@@ -20,6 +21,12 @@ def read_pathways(config_file):
     for fileid, pathway in config_g:
         pathway_dict[fileid] = pathway
     return pathway_dict
+
+def write_config(pathway_dict, config_file):
+    config_h = open(config_file, 'w')
+    for fileid in pathway_dict:
+        config_h.write(" ".join([fileid,pathway_dict[fileid]]) + '\n')
+    config_h.close()
 
 def find_files():
     "creates a list of all potentially needed database file paths"
@@ -50,28 +57,54 @@ def find_files():
 
     return filingcabinet
 
-def find_latest(filelist, seqtype, extension):
+def find_latest(filelist, seqtype, fextension):
     "finds the most recent version of a given file in filelist"
     shortlist = []
     for filename in filelist:
-        pattern = '(' + seqtype + ')\.[Vv]?([0-9]*\.[0-9]*\.?[0-9]*)[\._]?(' + extension + ')'
+        pattern = '(' + seqtype + ')\.[Vv]?([0-9]*\.[0-9]*\.?[0-9]*)[\._]?(' + fextension + ')'
         handle = re.search( pattern, filename )
         if handle is not None:
             version = handle.group(2)
             shortlist.append((version,filename))
+    if len(shortlist) == 0:
+        shortlist = [("","Not_found")]
     return sorted(shortlist, key=itemgetter(0))[-1][1]
 
 def construct_pathways(config_file):
-
-
+    filelist = find_files()
+    pathway_dict = {}
+    # get latest file for the OGS and assembly:
+    pathway_dict['gff'] = find_latest(filelist, 'OGS', "gff") #
+    pathway_dict['cds'] = find_latest(filelist, 'OGS', 'cds')
+    pathway_dict['pep'] = find_latest(filelist, 'OGS', 'pep')
+    pathway_dict['gtf'] = find_latest(filelist, 'OGS', 'gtf')    
+    pathway_dict['gff'] = find_latest(filelist, 'OGS', 'lcl.gff')
+    pathway_dict['lclcds'] = find_latest(filelist, 'OGS', 'lcl.cds')
+    pathway_dict['lclpep'] = find_latest(filelist, 'OGS', 'lcl.pep')
+    pathway_dict['ass'] = find_latest(filelist, 'assembly', 'fa')
+    pathway_dict['assgi'] = find_latest(filelist, 'assembly', 'gi.fa')
+    pathway_dict['goterms'] = find_latest(filelist, 'OGS', 'GOterms.list')
+    # get files for other purposes:
+    kegg_patt = '1\.keg'
+    orthologs_patt = 'BGI\.orthologs\.list'
+    for file in filelist:   
+        kegg_h = re.search(kegg_patt, file)
+        ortho_h = re.search(orthologs_patt, file)
+        if kegg_h is not None:  
+            pathway_dict['kegg'] = file
+        elif ortho_h is not None:
+            pathway_dict['ortho'] = file
+    
+    write_config(pathway_dict, config_file)     
     return pathway_dict
 
-def pick_latest(ogs_dir):
-    return latest_file
-
-if __name__ == "__main__":
-    config_file = os.path.dirname(gffparser.__file__) + "/pathways.config"
+def import_paths():
+    config_file = os.path.dirname(__file__) + "/pathways.config"
     if os.path.exists(config_file):
         pathway_dict = read_pathways(config_file)
     else:
         pathway_dict = construct_pathways(config_file)
+    return pathway_dict
+
+if __name__ == "__main__":
+    import_paths()
