@@ -13,6 +13,8 @@ from Bio.Seq import Seq
 from Bio.Alphabet import generic_dna, IUPAC
 from scipy.stats import fisher_exact
 
+from genomepy import config
+
 ###### INITIALISE THE FILE PATHS NEEDED FOR ANALYSIS #######################
 
 dbpaths = config.import_paths()
