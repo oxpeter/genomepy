@@ -12,13 +12,14 @@ import os
 import re
 from subprocess import Popen, PIPE
 from operator import itemgetter
-from pkg_resources import resource_filename, resource_string
+from pkg_resources import resource_filename, resource_exists
 #import pkgutil
 
 def read_pathways(config_file):
     pathway_dict = {}
-    config_h = open(resource_filename('genomepy', config_file), 'rb')
-    config_g = ( (line.split()[0], line.split()[1]) for line in config_h )
+    config_h = open( config_file, 'rb')
+    # split each line into two (variable and path), if no comment symbol # is present:
+    config_g = ( (line.split()[0], line.split()[1]) for line in config_h if re.search('#',line) == None)
     for fileid, pathway in config_g:
         pathway_dict[fileid] = pathway
     return pathway_dict
@@ -99,19 +100,24 @@ def construct_pathways(config_file):
     write_config(pathway_dict, config_file)
     return pathway_dict
 
+def rebuild_config():
+    config_path = resource_filename('genomepy', 'data/pathways.cfg')
+    pathway_dict = construct_pathways(config_path)
+    return pathway_dict
+
 def import_paths():
     #config_file = pkgutil.get_data('genomepy', 'data/pathways.cfg')
     #print config_file
-    config_str = resource_string('genomepy', 'data/pathways.cfg')
-    nothing_str = resource_string('genomepy', 'data/nothing.cfg')
-    configf_file = resource_filename('genomepy', 'data/pathways.cfg')
-    nothingf_file = resource_filename('genomepy', 'data/nothing.cfg')
+    #config_str = resource_string('genomepy', 'data/pathways.cfg')
+    #nothing_str = resource_string('genomepy', 'data/nothing.cfg')
+    config_exists = resource_exists('genomepy', 'data/pathways.cfg')
+    config_path = resource_filename('genomepy', 'data/pathways.cfg')
 
-    print "%r\n%r\n%r\n%r" % (config_str, nothing_str, configf_file, nothingf_file)
-    if config_file is not None:
-        pathway_dict = read_pathways(config_file)
+    print "%r\n%r" % (config_exists, config_path)
+    if config_exists:
+        pathway_dict = read_pathways(config_path)
     else:
-        pathway_dict = construct_pathways(config_file)
+        pathway_dict = construct_pathways(config_path)
     return pathway_dict
 
 if __name__ == "__main__":
