@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import numpy
 from scipy import stats
 
-import gffparser as gp
+from genomepy import gffparser as gp
 import qvalue
 
 ########################################################################################

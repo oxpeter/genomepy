@@ -14,7 +14,7 @@ import Bio.Blast.NCBIXML as xml
 from Bio.Seq import Seq
 
 
-import genematch
+from genomepy import genematch
 
 def findCRISPRsites(sequence_file='/Volumes/Genome/Cbir.assembly.v3.0_singleline.fa', pattern='([Gg][Gg].[Gg][Gg].{16}.[Gg][Gg])|([Cc][Cc].{19}[Cc][Cc].[Cc][Cc])'):
     " extract all CRISPR site matches from the genome as tuples containing each CRISPR sequence: "

@@ -55,7 +55,7 @@ import argparse
 
 import pysam
 
-import genematch
+from genomepy import genematch
 
 def build_index(gen_ref, idx_path, idx_name):
     cmd_line = "gmap_build -d " + idx_name + " -D " + idx_path + " " + gen_ref

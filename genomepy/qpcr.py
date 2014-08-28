@@ -9,9 +9,7 @@ from Bio.Seq import Seq
 from Bio.Alphabet import generic_dna, IUPAC
 import progressbar
 
-import genematch
-import gffparser
-import cris
+from genomepy import genematch, gffparser, cris
 
 ################################################################
 

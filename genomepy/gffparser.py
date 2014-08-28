@@ -18,8 +18,8 @@ from Bio.Graphics import GenomeDiagram
 import progressbar              # from Nilton Volpato
 
 import gff2bed2
-import genematch
-import config
+from genomepy import genematch
+from genomepy import config
 
 ####### CLASSES ############################################################
 
