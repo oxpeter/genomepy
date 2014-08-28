@@ -76,26 +76,32 @@ def construct_pathways(config_file):
     filelist = find_files()
     pathway_dict = {}
     # get latest file for the OGS and assembly:
-    pathway_dict['gff'] = find_latest(filelist, 'OGS', "gff") #
+    pathway_dict['gff'] = find_latest(filelist, 'OGS', "gff")
     pathway_dict['cds'] = find_latest(filelist, 'OGS', 'cds')
     pathway_dict['pep'] = find_latest(filelist, 'OGS', 'pep')
     pathway_dict['gtf'] = find_latest(filelist, 'OGS', 'gtf')
-    pathway_dict['gff'] = find_latest(filelist, 'OGS', 'lcl.gff')
+    pathway_dict['lclgff'] = find_latest(filelist, 'OGS', 'lcl.gff')
     pathway_dict['lclcds'] = find_latest(filelist, 'OGS', 'lcl.cds')
     pathway_dict['lclpep'] = find_latest(filelist, 'OGS', 'lcl.pep')
     pathway_dict['ass'] = find_latest(filelist, 'assembly', 'fa')
     pathway_dict['assgi'] = find_latest(filelist, 'assembly', 'gi.fa')
+    pathway_dict['assone'] = find_latest(filelist, 'assembly', 'singleline.fa')
     pathway_dict['goterms'] = find_latest(filelist, 'OGS', 'GOterms.list')
+    pathway_dict['ncbipep'] = find_latest(filelist, 'OGS', 'ncbi.annotated.pep')
     # get files for other purposes:
     kegg_patt = '1\.keg'
+    kegg_convert_patt = 'KEGG_orthologs.list'
     orthologs_patt = 'BGI\.orthologs\.list'
     for file in filelist:
         kegg_h = re.search(kegg_patt, file)
         ortho_h = re.search(orthologs_patt, file)
+        keggc_h = re.search(kegg_convert_patt, file)
         if kegg_h is not None:
             pathway_dict['kegg'] = file
         elif ortho_h is not None:
             pathway_dict['ortho'] = file
+        elif keggc_h is not None:
+            pathway_dict['keggortho'] = file
 
     write_config(pathway_dict, config_file)
     return pathway_dict

@@ -13,11 +13,16 @@ from Bio.Seq import Seq
 from Bio.Alphabet import generic_dna, IUPAC
 from scipy.stats import fisher_exact
 
+###### INITIALISE THE FILE PATHS NEEDED FOR ANALYSIS #######################
+
+dbpaths = config.import_paths()
+
 ############################################
 
 class GO_maker(object):
     "an object for quick access to all GO terms for a gene set"
-    def __init__(self, gofile='/Volumes/antqueen/genomics/experiments/analyses/BGI20120208_Genome/Gene_Ontology/Cerapachys_biroi.CE.GO.gene.list'):
+    def __init__(self, gofile=dbpaths['goterms']):
+        # gofile was '/Volumes/antqueen/genomics/experiments/analyses/BGI20120208_Genome/Gene_Ontology/Cerapachys_biroi.CE.GO.gene.list'
         self.go_repo = {}
         self.go_dict = {}
         self.go_defs = {}
@@ -122,7 +127,7 @@ def extract_locus(fname, col_num, datacol=False):
     fobj.close()
     return scaf, gbeg, gend, gdata
 
-def snp2gene(scaffold, pos, gff="/Volumes/antqueen/genomics/genomes/C.biroi/armyant.OGS.V1.8.4.gff"):
+def snp2gene(scaffold, pos, gff=dbpaths['gff']):
     """ given a scaffold and nt position, snp2gene will determine if the nt is within a
     gene, and if so, whether it is within an exon or intron"""
 
@@ -149,7 +154,7 @@ def snp2gene(scaffold, pos, gff="/Volumes/antqueen/genomics/genomes/C.biroi/army
 
     return (geneid, geneloc)
 
-def locus2gene(scaflist, gbeglist, gendlist, gdatalist=False, gff="/Volumes/antqueen/genomics/genomes/C.biroi/armyant.OGS.V1.8.4.gff", comprehensive=True ):
+def locus2gene(scaflist, gbeglist, gendlist, gdatalist=False, gff=dbpaths['gff'], comprehensive=True ):
     """ For each locus as defined by the three input lists, locus2gene() will pull out the
     overlapping genes from the OGS gff file. If an additional list of corresponding data
     is provided, it will be appended to the results dictionary.
@@ -259,7 +264,7 @@ def blast_results(blast_results, num_results=10):
         if counter == 0:
             break
 
-def extractseq(geneID, type='pep', OGS='/Volumes/antqueen/genomics/genomes/C.biroi/armyant.OGS.V1.8.6', startpos=0, endpos=-1):
+def extractseq(geneID, type='pep', OGS=dbpaths['goterms'][:-4], startpos=0, endpos=-1):
     """ extracts sequence of geneID from the current annotations. type is cds,  pep or fasta.
     """
     geneseq = ""
@@ -297,7 +302,42 @@ def gff_init():
     """ To speed up gene matching, this will create a gff dictionary """
     pass
 
+def extract_promoter():
+    """
+    # To extract Vg promoters from all ants, I used the following under __main__:
+    """
+    filename = "/Users/POxley/Documents/Analysis/Data/Genes/Vg/Vg_promoters.info"
+    file_h = open(filename, 'rb')
+    results_dict = {}
+    file_h.next()
+    for line in file_h:
+        # get all the parameters from the file:
+        gene_id  = line.split()[0]
+        spp      = line.split()[1]
+        scaf     = line.split()[2]
+        polarity = line.split()[3]
+        startpos = int(line.split()[4])
+        endpos   = int(line.split()[5])
 
+        # to search the concatenated genome file, need to add spp to scaffold name:
+        defcheck = spp + "_" + scaf
+        sequence = extractseq(defcheck, type='fa', OGS='/Volumes/Genome/Ant_Genomes/EightAntGenomes', startpos=startpos, endpos=endpos)
+        #defcheck = spp + "_" + scaf
+        #sequence = extractseq(defcheck, type='fa', OGS='/Volumes/Genome/Non-ant_genomes/Hymen.N.vit.genome', startpos=startpos, endpos=endpos)
+
+        # if polarity is -ve, create reverse complement:
+        if polarity == '-':
+            seq_obj = Seq(sequence, generic_dna)
+            sequence = seq_obj.reverse_complement()
+            polarity = "REVERSE COMPLEMENT"
+
+        # display results
+        results_dict[gene_id] =  ">%s %s %s %s %d-%d\n%s" % (gene_id, spp, scaf, polarity, startpos, endpos, sequence)
+        print results_dict[gene_id]
+
+    #for gene in results_dict:
+    #    print results_dict[gene]
+    return results_dict
 
 ######## Gene Ontology and KEGG pathway analyses ######################
 def go_finder(genelist):
@@ -351,9 +391,9 @@ def go_enrichment(genelist):
 
     return gopval
 
-def cbir_to_kegg(genelist, reversedic=False):
+def cbir_to_kegg(genelist, dbpaths=dbpaths, reversedic=False):
     "Converts Cbir gene IDs to Kegg orthologs (KOs)"
-    kegg_h = open('/Volumes/antqueen/genomics/experiments/analyses/BGI20120208_Genome/KEGG_orthologs/KEGG_orthologs.list', 'rb')
+    kegg_h = open(dbpaths['keggortho'], 'rb')
 
     keggd = {}
     keggcount = {}
@@ -383,9 +423,9 @@ def cbir_to_kegg(genelist, reversedic=False):
                 pass
     return len(keggd), keggdic
 
-def ko_to_pathway(ko):
+def ko_to_pathway(ko, dbpaths=dbpaths):
     "given a kegg ortholog (ko), returns the kegg pathway it's part of"
-    kmod_h = open('/Volumes/antqueen/genomics/experiments/analyses/BGI20120208_Genome/KEGG_orthologs/ko00001.keg', 'rb')
+    kmod_h = open(dbpaths['kegg'], 'rb')
 
     koterm = ''
     kdescription = 'no description found'
@@ -675,8 +715,8 @@ def kegg_pathway_enrichment(genelist, show_all=True, pthresh=0.01):
 
     return kmodenrich, gene_kos
 
-def cbir_ncbi(geneobj):
-    ncbi_h = open('/Volumes/antqueen/genomics/genomes/C.biroi/armyant.OGS.1.8.6.ncbi.annotated.pep', 'rb')
+def cbir_ncbi(geneobj, dbpaths=dbpaths):
+    ncbi_h = open(dbpaths['ncbipep'], 'rb')
 
     ncbi_d = {}
     for line in ncbi_h:
@@ -698,13 +738,8 @@ def cbir_ncbi(geneobj):
             gene_gi[geneobj] = 'no NCBI item'
     return gene_gi
 
-
-
-
-
 ########################################################################
 def mainprog():
-    print "welcome back to python"
     cmmd, fname  = sys.argv
 
     cuffgenes = findgene(fname)
@@ -719,55 +754,13 @@ def mainprog():
     for gene in flylogs:
         print flylogs[gene]
 
-    Cbi2 = extractseq('scaffold176',type='fa', OGS='/Volumes/antqueen/genomics/genomes/C.biroi/Cbir.assembly.v3.0', startpos=92000, endpos=96000)
-    Cbi3 = extractseq('scaffold197',type='fa', OGS='/Volumes/antqueen/genomics/genomes/C.biroi/Cbir.assembly.v3.0', startpos=1552000, endpos=1557000)
-    Cbi6 = extractseq('scaffold314',type='fa', OGS='/Volumes/antqueen/genomics/genomes/C.biroi/Cbir.assembly.v3.0', startpos=347000, endpos=352000)
+    Cbi2 = extractseq('scaffold176',type='fa', OGS=dbpaths['ass'][:-3], startpos=92000, endpos=96000)
+    Cbi3 = extractseq('scaffold197',type='fa', OGS=dbpaths['ass'][:-3], startpos=1552000, endpos=1557000)
+    Cbi6 = extractseq('scaffold314',type='fa', OGS=dbpaths['ass'][:-3], startpos=347000, endpos=352000)
     crispr_f = '/Volumes/Genome/CRISPR/mini_genome.fa'
     crispr_h = open(crispr_f, 'w')
     crispr_h.write( ">scaf176 Cbi2\n%s\n>scaf197 Cbi3\n%s\n>scaf314 Cbi6\n%s\n" % (Cbi2, Cbi3, Cbi6) )
     crispr_h.close()
-
-        #geneID = cuffgenes[result][0]
-        #geneseq = extractseq(geneID, 'pep')
-        #blastresult = blastgene(geneseq)
-        #print "#" * 45
-
-    """
-    # To extract Vg promoters from all ants, I used the following under __main__:
-
-    filename = "/Users/POxley/Documents/Analysis/Data/Genes/Vg/Vg_promoters.info"
-    file_h = open(filename, 'rb')
-    results_dict = {}
-    file_h.next()
-    for line in file_h:
-        # get all the parameters from the file:
-        gene_id  = line.split()[0]
-        spp      = line.split()[1]
-        scaf     = line.split()[2]
-        polarity = line.split()[3]
-        startpos = int(line.split()[4])
-        endpos   = int(line.split()[5])
-
-        # to search the concatenated genome file, need to add spp to scaffold name:
-        defcheck = spp + "_" + scaf
-        sequence = extractseq(defcheck, type='fa', OGS='/Volumes/Genome/Ant_Genomes/EightAntGenomes', startpos=startpos, endpos=endpos)
-        #defcheck = spp + "_" + scaf
-        #sequence = extractseq(defcheck, type='fa', OGS='/Volumes/Genome/Non-ant_genomes/Hymen.N.vit.genome', startpos=startpos, endpos=endpos)
-
-        # if polarity is -ve, create reverse complement:
-        if polarity == '-':
-            seq_obj = Seq(sequence, generic_dna)
-            sequence = seq_obj.reverse_complement()
-            polarity = "REVERSE COMPLEMENT"
-
-        # display results
-        results_dict[gene_id] =  ">%s %s %s %s %d-%d\n%s" % (gene_id, spp, scaf, polarity, startpos, endpos, sequence)
-        print results_dict[gene_id]
-
-    #for gene in results_dict:
-    #    print results_dict[gene]
-    """
-
 
 if __name__ == '__main__':
 
@@ -779,5 +772,5 @@ if __name__ == '__main__':
     genelist = [orco, itr, site1]
 
     for site in genelist:
-        sequence = extractseq(site[0], type='fa', OGS='/Volumes/antqueen/genomics/genomes/C.biroi/Cbir.assembly.v3.0', startpos=site[1]-1000, endpos=site[2]+1000)
+        sequence = extractseq(site[0], type='fa', OGS=dbpaths['ass'][:-3], startpos=site[1]-1000, endpos=site[2]+1000)
         print ">%s\n%s\n" % (site[0], sequence)
