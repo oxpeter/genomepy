@@ -10,7 +10,7 @@ setup(name='Genomepy',
       url='https://github.com/oxpeter/genomepy',
       packages=['genomepy'],
       package_dir={'genomepy': 'genomepy'},
-      package_data={'genomepy': ['data/*.cfg']},
+      package_data={'genomepy': ['data/*.cfg'], 'genomepy': ['data/README']},
       requires=['argparse','scipy','numpy','matplotlib','Bio','qvalue', 'progressbar',
                 'operator', 'pylab', 'mpl_toolkits', 'statsmodels', 'pysam'
                 ]
