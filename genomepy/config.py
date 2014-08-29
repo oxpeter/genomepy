@@ -119,7 +119,7 @@ def import_paths():
     config_exists = resource_exists('genomepy', 'data/pathways.cfg')
     config_path = resource_filename('genomepy', 'data/pathways.cfg')
 
-    print "%r\n%r" % (config_exists, config_path)
+    print "Using config file from %s" % (config_path)
     if config_exists:
         pathway_dict = read_pathways(config_path)
     else:
