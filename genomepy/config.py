@@ -108,6 +108,7 @@ def construct_pathways(config_file):
 
 def rebuild_config():
     config_path = resource_filename('genomepy', 'data/pathways.cfg')
+    print "Rebuilding", config_path
     pathway_dict = construct_pathways(config_path)
     return pathway_dict
 
