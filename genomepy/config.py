@@ -88,21 +88,25 @@ def construct_pathways(config_file):
     pathway_dict['assone'] = find_latest(filelist, 'assembly', 'singleline.fa')
     pathway_dict['goterms'] = find_latest(filelist, 'OGS', 'GOterms.list')
     pathway_dict['ncbipep'] = find_latest(filelist, 'OGS', 'ncbi.annotated.pep')
+    pathway_dict['iprlist'] = find_latest(filelist, 'iprscan', 'gene.list')
     # get files for other purposes:
     kegg_patt = '1\.keg'
     kegg_convert_patt = 'KEGG_orthologs.list'
     orthologs_patt = 'BGI\.orthologs\.list'
+    kegg_ps_patt = '2\.sub\.info'
     for file in filelist:
         kegg_h = re.search(kegg_patt, file)
         ortho_h = re.search(orthologs_patt, file)
         keggc_h = re.search(kegg_convert_patt, file)
+        keggp_h = re.search(kegg_ps_patt, file)
         if kegg_h is not None:
             pathway_dict['kegg'] = file
         elif ortho_h is not None:
             pathway_dict['ortho'] = file
         elif keggc_h is not None:
             pathway_dict['keggortho'] = file
-
+        elif keggp_h is not None:
+            pathway_dict['keggpathways'] = file
     write_config(pathway_dict, config_file)
     return pathway_dict
 
@@ -128,4 +132,4 @@ def import_paths():
     return pathway_dict
 
 if __name__ == "__main__":
-    import_paths()
+    rebuild_config()

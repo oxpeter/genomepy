@@ -717,6 +717,81 @@ def kegg_pathway_enrichment(genelist, show_all=True, pthresh=0.01):
 
     return kmodenrich, gene_kos
 
+def collect_kegg_pathways(minsize=0, filename=dbpaths['keggpathways']):
+    """
+    output: smallrefined_dict = { pathwayname:[list of Cbir_genes] }
+    """
+    kp_h = open(filename, 'rb')
+    bigpathway_dict = {}
+    smallpathway_dict = {}
+    for line in kp_h:
+        if line.split()[0] == 'C': # eg C  Glycan Metabolism
+            bigpath_c = " ".join(line.split()[1:])
+            bigpathway_dict[bigpath_c] = []
+        elif line.split()[0] == 'D': # eg D   M00072 Oligosaccharyltransferase [PATH:map00510]
+            smallpath_c = " ".join(line.split()[1:])
+            smallpathway_dict[smallpath_c] = []
+        elif line.split()[0] == 'E': # eg E   Cbir_09279 POLD1; DNA poliymerase delata subunit 1 [EC:2.7.7.7]
+            bigpathway_dict[bigpath_c].append(line.split()[1])
+            smallpathway_dict[smallpath_c].append(line.split()[1])
+
+    bigrefined_dict = {}
+    smallrefined_dict = {}
+    for path in bigpathway_dict:
+        if len(bigpathway_dict[path]) >= minsize:
+            bigrefined_dict[path] = bigpathway_dict[path]
+    for path in smallpathway_dict:
+        if len(smallpathway_dict[path]) >= minsize:
+            smallrefined_dict[path] = smallpathway_dict[path]
+
+    return bigrefined_dict, smallrefined_dict
+
+def collect_ipr_pathways(minsize=0, filename=dbpaths['iprlist']):
+    """
+    output: iprrefined_dict = { pathwayname:[list of Cbir_genes] }
+    """
+    ipr_h = open(filename, 'rb')
+    ipr_dict = {}
+    for line in ipr_h:
+        geneid = line.split()[0]
+        iprids = re.findall('IPR[0-9]+', line)
+        for ipr in iprids:
+            if ipr in ipr_dict:
+                ipr_dict[ipr].append(geneid)
+            else:
+                ipr_dict[ipr] = [geneid]
+
+    # remove any IPRs with less than the minsize number of Cbir genes specified:
+    iprrefined_dict = {}
+    for ipr in ipr_dict:
+        if len(ipr_dict[ipr]) >= minsize:
+            iprrefined_dict[ipr] = ipr_dict[ipr]
+
+    return iprrefined_dict
+
+def collect_go_pathways(minsize=0, filename=dbpaths['goterms']):
+    """
+    output: iprrefined_dict = { pathwayname:[list of Cbir_genes] }
+    """
+    go_h = open(filename, 'rb')
+    go_dict = {}
+    for line in go_h:
+        geneid = line.split()[0]
+        goids = re.findall('GO:[0-9]+', line)
+        for go in goids:
+            if go in go_dict:
+                go_dict[go].append(geneid)
+            else:
+                go_dict[go] = [geneid]
+
+    # remove any GOs with less than the minsize number of Cbir genes specified:
+    gorefined_dict = {}
+    for go in go_dict:
+        if len(go_dict[go]) >= minsize:
+            gorefined_dict[go] = go_dict[go]
+
+    return gorefined_dict
+
 def cbir_ncbi(geneobj, dbpaths=dbpaths):
     ncbi_h = open(dbpaths['ncbipep'], 'rb')
 
