@@ -739,10 +739,10 @@ def collect_kegg_pathways(minsize=0, filename=dbpaths['keggpathways']):
     smallrefined_dict = {}
     for path in bigpathway_dict:
         if len(bigpathway_dict[path]) >= minsize:
-            bigrefined_dict[path] = bigpathway_dict[path]
+            bigrefined_dict[("KEGG pathway", path)] = bigpathway_dict[path]
     for path in smallpathway_dict:
         if len(smallpathway_dict[path]) >= minsize:
-            smallrefined_dict[path] = smallpathway_dict[path]
+            smallrefined_dict[("KEGG module", path)] = smallpathway_dict[path]
 
     return bigrefined_dict, smallrefined_dict
 
@@ -752,20 +752,23 @@ def collect_ipr_pathways(minsize=0, filename=dbpaths['iprlist']):
     """
     ipr_h = open(filename, 'rb')
     ipr_dict = {}
+    ipr_defs_dict = {}
     for line in ipr_h:
         geneid = line.split()[0]
         iprids = re.findall('IPR[0-9]+', line)
+        iprdefs = re.findall('(IPR[0-9]*);\s*([^\t\n]*)', line)
         for ipr in iprids:
             if ipr in ipr_dict:
                 ipr_dict[ipr].append(geneid)
             else:
                 ipr_dict[ipr] = [geneid]
-
+        for ipr in iprdefs:
+            ipr_defs_dict[ipr[0]] = ipr
     # remove any IPRs with less than the minsize number of Cbir genes specified:
     iprrefined_dict = {}
     for ipr in ipr_dict:
         if len(ipr_dict[ipr]) >= minsize:
-            iprrefined_dict[ipr] = ipr_dict[ipr]
+            iprrefined_dict[ipr_defs_dict[ipr]] = ipr_dict[ipr]
 
     return iprrefined_dict
 
@@ -775,20 +778,25 @@ def collect_go_pathways(minsize=0, filename=dbpaths['goterms']):
     """
     go_h = open(filename, 'rb')
     go_dict = {}
+    go_defs_dict = {}
     for line in go_h:
         geneid = line.split()[0]
         goids = re.findall('GO:[0-9]+', line)
+        godefs = re.findall("(GO:[0-9]*);\s*([^;]*);\s([\w ]*)", line)
         for go in goids:
             if go in go_dict:
                 go_dict[go].append(geneid)
             else:
                 go_dict[go] = [geneid]
 
+        for go in godefs:
+            go_defs_dict[go[0]] = (go[0],go[1],go[2])
+
     # remove any GOs with less than the minsize number of Cbir genes specified:
     gorefined_dict = {}
     for go in go_dict:
         if len(go_dict[go]) >= minsize:
-            gorefined_dict[go] = go_dict[go]
+            gorefined_dict[go_defs_dict[go]] = go_dict[go]
 
     return gorefined_dict
 
