@@ -2,7 +2,7 @@
 
 from distutils.core import setup
 
-setup(name='Genomepy',
+setup(name='genomepy',
       version='1.0',
       description='Python Distribution Utilities',
       author='Peter Oxley',
