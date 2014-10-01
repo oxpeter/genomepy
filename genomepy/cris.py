@@ -9,35 +9,77 @@ import re
 import os
 import types
 import argparse
+import time
 
 import Bio.Blast.NCBIXML as xml
 from Bio.Seq import Seq
 
+from genomepy import config, gffparser
+
+###### INITIALISE THE FILE PATHS NEEDED FOR ANALYSIS #######################
+
+dbpaths = config.import_paths()
+
+############################################
 
 from genomepy import genematch
 
-def findCRISPRsites(sequence_file='/Volumes/Genome/Cbir.assembly.v3.0_singleline.fa', pattern='([Gg][Gg].[Gg][Gg].{16}.[Gg][Gg])|([Cc][Cc].{19}[Cc][Cc].[Cc][Cc])'):
+def findCRISPRsites(sequence_file=dbpaths['ass'], pattern='(?=(.{20}.[Gg][Gg]))|(?=([Cc][Cc]..{20}))'):
     " extract all CRISPR site matches from the genome as tuples containing each CRISPR sequence: "
+    defpat = '([sCcafold]*[0-9]+)'
+
     allmatches = []
     scaffmatches = []
+    defline = 'init'
+    seqline = ''
+    seqdict = {}
 
-
+    # create dictionary of sequences keyed from their deflines
     gfile = open(sequence_file, 'rb')
-    #pattern = '(.{20}.[Gg][Gg]).{1,99}([Cc][Cc].{20})'
-    #pattern = '([Gg][Gg].{18}.[Gg][Gg]).{1,30}([Cc][Cc].{18}[Cc][Cc])'
-    #first_round pattern = '([Cc][Cc].{19}[Cc][Cc]).{1,20}([Gg][Gg].{19}[Gg][Gg])'
-    #pattern = '([Gg][Gg].[Gg][Gg].{16}.[Gg][Gg])|([Cc][Cc].{19}[Cc][Cc].[Cc][Cc])'
-    defpat = '([sCcafold]*[0-9]+)'
-    #pattern = '(CGTAACAGTGTGTCGTGGCTCCCAGGGAGAGAAAGAGAGAGAGA)(GA)' # test pattern from inotocin
-    linematches = [ (re.search(defpat, line), re.findall(pattern, line) ) for line in gfile ]
-    for defmatch, sitematchlist in linematches:
-        if not isinstance(defmatch, types.NoneType):
-            currentscaf = defmatch.groups()[0]
-        if len(sitematchlist) != 0:
-            scaffmatches.append((currentscaf, sitematchlist))
-            allmatches.extend(sitematchlist)
+    for line in gfile:
+        if line[0] == '>':
+            if defline != 'init': # ie, skip the parsing on the first occurrence of '>'
+                # parse defline:
+                defparsed = re.search(defpat, defline)
+                if defparsed is not None:
+                    definition = defparsed.group(1)
+                else:
+                    definition = defline.split()[0]
+
+                # add sequence to dictionary
+                seqdict[definition] = seqline
+                # search line for patterns:
+                all = [m[0] + m[1] for m in re.findall(pattern, seqdict[definition])]
+
+                if len(all) > 0:
+                    scaffmatches.append((definition, all))
+                    allmatches.extend(all)
+
+            # reset for next sequence:
+            defline = line.strip()
+            seqline = ''
+        else:
+            seqline += line.strip()
+    else:
+        if defline != 'init': # ie, skip the parsing on the first occurrence of '>'
+            # parse defline:
+            defparsed = re.search(defpat, defline)
+            if defparsed is not None:
+                definition = defparsed.group(1)
+            else:
+                definition = defline.split()[0]
+
+            # add sequence to dictionary
+            seqdict[definition] = seqline
+            # search line for patterns:
+            all = [m[0] + m[1] for m in re.findall(pattern, seqdict[definition])]
+
+            if len(all) > 0:
+                scaffmatches.append((definition, all))
+                allmatches.extend(all)
+
     gfile.close()
-    #print scaffmatches[0:1]
+
     return allmatches, scaffmatches
 
 def make_fasta(seq, seqnames=None, outpath='/Users/POxley/blastinput.tmp', append='w'):
@@ -62,9 +104,9 @@ def make_fasta(seq, seqnames=None, outpath='/Users/POxley/blastinput.tmp', appen
     else:
         wobj = open(outpath, append)
         if seqnames:
-            defline = ">lcl|" + seqnames + '\n'
+            defline = ">" + seqnames + '\n'
         else:
-            defline = ">lcl|sequence1\n"
+            defline = ">%s\n" % (seq[:25])
         seqline = str(seq) + "\n"
         wobj.write(defline)
         wobj.write(seqline)
@@ -77,13 +119,15 @@ def blastseq(seq, seqnames=None, inpath='/Users/POxley/blastinput.tmp' , outpath
 
     if outfmt == 'tab':
         # for tabular output:
-        blastcmd_tab = 'blastn -query ' + inpath + ' -db /Volumes/antqueen/genomics/indices/BLAST_databases/nucleotide/Cbir.v3.0 -outfmt 6 -word_size 7 -evalue 1000000 -out ' + outpath
-        os.system(blastcmd_tab)
+        blastcmd = 'blastn -query ' + inpath + ' -db /Volumes/antqueen/genomics/indices/BLAST_databases/nucleotide/Cbir.v3.0 -outfmt 6 -word_size 7 -evalue 1000000 -out ' + outpath
 
     elif outfmt == 'xml':
         # for xml output:
-        blastcmd_xml = 'blastn -query ' + inpath + ' -db /Volumes/antqueen/genomics/indices/BLAST_databases/nucleotide/Cbir.v3.0 -outfmt 5 -word_size 7 -evalue 1000000 -out ' + outpath
-        os.system(blastcmd_xml)
+        blastcmd = 'blastn -query ' + inpath + ' -db /Volumes/antqueen/genomics/indices/BLAST_databases/nucleotide/Cbir.v3.0 -outfmt 5 -word_size 7 -evalue 1000000 -out ' + outpath
+
+    elif outfmt == 'crisprtab':
+        # for tab delimited values used in crispr search parsing:
+        blastcmd = 'blastn -query ' + inpath + " -db /Volumes/antqueen/genomics/indices/BLAST_databases/nucleotide/Cbir.v3.0 -outfmt '6 qseqid qlen nident mismatch gaps qseq sseqid sstart send' -word_size 7 -evalue 1000000 -out " + outpath
 
     else:
         # if you want blast results that are viewer friendly:
@@ -91,9 +135,11 @@ def blastseq(seq, seqnames=None, inpath='/Users/POxley/blastinput.tmp' , outpath
             ' -db /Volumes/antqueen/genomics/indices/BLAST_databases/nucleotide/Cbir.v3.0 -out ' + \
             ' -out ' + outpath + \
             ' -outfmt 3 -word_size 7 -evalue 1000000'
-        os.system(blastcmd_vis)
 
-def findnearest(scaffold, hitpos, gff_p="/Volumes/antqueen/genomics/genomes/C.biroi/armyant.OGS.V1.8.6.gff"):
+    os.system(blastcmd)
+
+def findnearest(scaffold, hitpos, gff_p=dbpaths['gff']):
+    "deprecated. Now use gffparser gff_obj.findnearest(scaffold, posn)"
     gffdict = {}
     gffobj = open(gff_p, 'rb')
     for line in gffobj:
@@ -125,11 +171,50 @@ def scaflength(scaffold):
     scaffseq = genematch.extractseq(scaffold, type='fa', OGS='/Volumes/antqueen/genomics/genomes/C.biroi/Cbir.assembly.v3.0')
     return len(scaffseq)
 
-def showblast(filename='/Users/POxley/blastoutput.tmp', threshold=80, gaps_allowed=3, shownearest=True, seq="_unknown_", out_path="/Users/POxley/Documents/Analysis/Data/People/Buck/Second_Round/results.info"):
+def parse_crispr_blast(blast_results, gffobj, id_thresh=18, gap_thresh=0, shownearest=True):
+    "parses the tab delimited blastn results to filter out sequences that are no good"
+    results_dict = {}
+    blastresults_h = open(blast_results, 'rb')
+    blastparser = (line.split() for line in blastresults_h)
+    # for each sequence, create a list of blast results (each result contained as a dict):
+    for qseqid, qlen, nident, mismatch, gaps, qseq, sseqid, sstart, send in blastparser:
+        # check to see if result has PAM sequence or not:
+        if qseqid[-2:].upper() == 'GG':
+            haspam = True
+            cutsite = int(send) - 3
+        elif qseqid[:2].upper() == 'CC':
+            haspam = True
+            cutsite = int(sstart) + 3
+
+        # check to see if cutsite is in exon:
+        exonic = gffobj.inexon(cutsite, sseqid, gene=False)
+
+        if int(nident) >= id_thresh and int(gaps) <= gap_thresh and haspam:
+            if shownearest:
+                upstream, downstream = gffobj.findnearest(sseqid, cutsite)
+            else:
+                upstream = (0,'not searched')
+                downstream = (0,'not searched')
+
+            curr_result = {'downdist':downstream[0], 'downgene':downstream[1],
+                'updist':upstream[0], 'upgene':upstream[1],'qlen':int(qlen),
+                'nident':int(nident), 'mismatch':int(mismatch), 'gaps':int(gaps),
+                'qseq':qseq, 'sseqid':sseqid, 'sstart':int(sstart), 'send':int(send),
+                'exonic':exonic, 'cutsite':cutsite, 'haspam':haspam}
+
+            if qseqid in results_dict:
+                results_dict[qseqid].append(curr_result)
+            else:
+                results_dict[qseqid] = [curr_result]
+
+    blastresults_h.close()
+    return results_dict
+
+def showblast(blast_results='/Users/POxley/blastoutput.tmp', threshold=80, gaps_allowed=3, shownearest=True, seq="_unknown_", out_path="/Users/POxley/tmp.info"):
     "parses blast results in xml format (such as those created by blastseq()"
 
-    blastresults = open(filename, 'rb')
-    parsed_results = xml.parse(blastresults)
+    blastresults_h = open(blast_results, 'rb')
+    parsed_results = xml.parse(blastresults_h)
 
     #print "BLAST results parsed. Extracting hits with identities >= %d%%..." % (threshold)
     hitnumber = {}
@@ -173,7 +258,7 @@ def showblast(filename='/Users/POxley/blastoutput.tmp', threshold=80, gaps_allow
                     results_h.write( "genome: %s\n\n" % (hsp.sbjct) )
     results_h.write( "### %d matches for sequence %s\n\n" % (hitcount, seq) )
     results_h.close()
-    blastresults.close()
+    blastresults_h.close()
     return hitnumber, hitseq
 
 def pcr_creator():
@@ -181,28 +266,76 @@ def pcr_creator():
 	(with the second reverse complemented)"""
 	return None
 
+def create_log(args):
+    ## create output folder and log file of arguments:
+    timestamp = time.strftime("%b%d_%H.%M")
+    if not args.output_file:
+        root_dir = os.getcwd()
+        newfolder = root_dir + "/crispr." + timestamp + "." + args.guide_rna
+        os.mkdir(newfolder)  # don't have to check if it exists, as timestamp is unique
+        filename = newfolder + "/crispr." + timestamp + ".log"
+    else:
+        newfolder = os.path.realpath(args.filename)
+        if os.path.exists(newfolder) is False:  # check to see if folder already exists...
+            os.mkdir(newfolder)
+        filename = newfolder + '/' + os.path.basename(args.filename) + '.' + timestamp + ".log"
+
+    log_h = open(filename, 'w')
+    log_h.write( "File created on %s\n" % (timestamp) )
+    log_h.write( "Program called from %s\n\n" % (os.getcwd()) )
+    for arg in str(args)[10:-1].split():
+        log_h.write( "%s\n" % (arg) )
+    log_h.close()
+    return filename
+
+def report_results(filename, blast_dict):
+    results_h = open(filename, "a")
+    results_h.write( "%-26s %-20s %-10s || %-4s %-4s %-4s %-5s || %-5s %s %s %s %s\n" % ('qseq','sseqid','cutsite','nident','mismatch','gaps','PAM','exonic?','downgene','downdist','upgene','updist') )
+    for seqid in blast_dict:
+        results_h.write( "\n## %s (%d matches) %s\n" % (seqid, len(blast_dict[seqid]), '#' * 30) )
+        for match in blast_dict[seqid]: # each match is a dictionary
+            results_h.write( "%(qseq)-26s %(sseqid)-20s %(cutsite)-10d || %(nident)-4d %(mismatch)-4d %(gaps)-4d PAM:%(haspam)-5s || %(exonic)-5s %(downgene)s %(downdist)-10d %(upgene)s %(updist)d\n" % (match) )
+    results_h.close()
+
+
+
 if __name__ == '__main__':
 
     ##### CLI Argument Parser #####
     parser = argparse.ArgumentParser(description="Finds and assesses CRISPR sites")
     parser.add_argument("-s", "--sequence_file", type=str, dest="seq_path", default='/Volumes/antqueen/genomics/genomes/C.biroi/Cbir.assembly.v3.0_singleline.fa', help="Specify the .fa file containing the sequence to be searched")
-    parser.add_argument("-p", "--pattern", type=str, dest="pattern", default='([Gg][Gg].[Gg][Gg].{16}.[Gg][Gg])|([Cc][Cc].{19}[Cc][Cc].[Cc][Cc])', help="Specify the regular expression string to search with.")
-    parser.add_argument("-o", "--output_file", type=str, dest="out_path", default="/Users/POxley/Documents/Analysis/Data/People/Buck/crispr.info", help="Specify a file in which to save results.")
+    parser.add_argument("-p", "--pattern", type=str, dest="pattern", default='(?=([Gg][Gg].{18}.[Gg][Gg]))|(?=([Cc][Cc]..{18}[Cc][Cc]))', help="Specify the regular expression string to search with.")
+    parser.add_argument("-r", "--guide_rna", type=str, help="Use a pre-defined guide RNA sequence:\nsx - short exogenous\nlx - long exogenous\nsn - short endogenous\nln - long endogenous")
+    parser.add_argument("-o", "--output_file", type=str,  help="Specify a file in which to save results.")
     parser.add_argument("-g", "--gaps_allowed", type=int, dest="gaps_allowed", default=0, help="Specify the number of gaps allowed in reported sequence matches.\nDefault = 0")
-    parser.add_argument("-t", "--threshold", type=int, dest="threshold", default=80, help="Specify the minimum %%id to report in sequence matches.\nDefault = 80")
+    parser.add_argument("-i", "--id_thresh", type=int,  default=18, help="Specify the minimum id to report in sequence matches.\nDefault = 18")
+    parser.add_argument("-t", "--threshold", type=int, dest="threshold", default=76, help="Specify the minimum %%id to report in sequence matches.\nDefault = 76")
+    parser.add_argument("-x", "--exogenous", action='store_true',  help="use if sequence is exogenous, to do second blast with GG added to seq.")
     #parser.add_argument("fastq_dir", type=str, help="The directory containing all the fastq files for analysis.")
 
     args = parser.parse_args()
     ###############################
 
+    if args.guide_rna == 'sx':  # short exogenous
+        args.pattern = '(?=(.{18}.[Gg][Gg]))|(?=([Cc][Cc]..{18}))'
+        args.exogenous = True
+    if args.guide_rna == 'lx':  # long exogenous
+        args.pattern = '(?=(.{20}.[Gg][Gg]))|(?=([Cc][Cc]..{20}))'
+        args.exogenous = True
+    if args.guide_rna == 'sn':  # short endogenous
+        args.pattern = '(?=([Gg][Gg].{16}.[Gg][Gg]))|(?=([Cc][Cc].{16}[Cc][Cc].[Cc][Cc]))'
+    if args.guide_rna == 'ln':  # long endogenous
+        args.pattern = '(?=([Gg][Gg].{18}.[Gg][Gg]))|(?=([Cc][Cc]..{18}[Cc][Cc]))'
+
+    logfile = create_log(args)
+
     listcount = 0
     uniquedict = {}
     dupdict = {}
     CRISPRmatches, scafreport = findCRISPRsites(args.seq_path, args.pattern)
-    print "\nNumber of scaffolds with matches found is %d" % (len(scafreport))
+    print "\n%d scaffold%s with matches found." % (len(scafreport), 's' if len(scafreport) > 1 else '' )
     for scaf, hitlist in scafreport:
-        for seqresults in hitlist:
-            seqresult = seqresults[0] + seqresults[1]
+        for seqresult in hitlist:
             listcount += 1
             if seqresult in uniquedict:
                 del uniquedict[seqresult]
@@ -214,39 +347,46 @@ if __name__ == '__main__':
 
     resultslist = uniquedict
 
-    """ the original code was looking for two matches and comparing both to all others.
-    This led to having to duplicate the dictionary, with each sequence as key and its
-    complement as value, and vice versa. After checking for the uniqueness of both seqs,
-    the dictionary uniquedict was condensed into resultslist to eliminate the duplication.
 
-    resultslist = {}
+    gffobj = gffparser.My_gff()
 
-    for scaf, hitlist in scafreport:
-        for seqresult in hitlist:
-            if seqresult[0] in uniquedict:
-                resultslist[seqresult[0]] = uniquedict[seqresult[0]]"""
+    print "%d CRISPR sites found in sequence file (%d unique)" % (listcount, len(resultslist))
 
 
-    #for sequence in resultslist:
-        #print sequence, resultslist[sequence]
 
-    print listcount, "CRISPR sites found in sequence file"
-    print len(resultslist) , "(uniqe CRISPR sites found)\n"
-
-    # blast each pair of CRISPR sequences against the C. biroi genome:
-    print "Blasting queries to C. biroi genome."
-    print "Number of hits above threshold for each query will be saved to %s" % (args.out_path)
+    blast_file = logfile[:-3] + 'blast.info'
+    print "Number of hits above threshold for each query will be saved to %s" % (blast_file)
     count = 1
+    t0, t1, t2, t3 = (0,0,0,0)
     for seq1 in resultslist:
-        # seq1 = "GGN" + seq1  #   To search for extended sequence match
+        print "Time: blast - %ds\tparsing - %ds\treporting - %ds" % (t1-t0, t2-t1, t3-t2)
         print "%d) %s " % (count, seq1)
+        t0 = time.time()
         count += 1
-        blastseq(seq1)
-        #print "sequence blasted"
-        blasthits, blastseqs = showblast(seq=seq1, threshold=args.threshold, gaps_allowed=args.gaps_allowed, out_path=args.out_path)
-        #print "parsed results saved to file."
-        results_h = open(args.out_path, "a")
-        for seqid in blasthits:
-            if blasthits[seqid] < 2:
-                results_h.write( "%s: %s\n" % (seqid, blastseqs[seqid]) )
-        results_h.close()
+        blastseq(seq1, inpath=logfile[:-3]+'blast_in.tmp', outpath=logfile[:-3]+'blast_out.tmp', outfmt='crisprtab')
+        t1 = time.time()
+        blast_dict = parse_crispr_blast(logfile[:-3]+'blast_out.tmp', gffobj, id_thresh=args.id_thresh, gap_thresh=args.gaps_allowed, shownearest=True)
+        t2 = time.time()
+        report_results(logfile[:-3]+'final_results.info', blast_dict)
+        t3 = time.time()
+    if args.exogenous: # have to blast sequence with the extra T7 GG appended to the search
+        for seq1 in resultslist:
+            # determine whether sequence is rev comp or straight, and append GG/CC:
+
+            if seq1[-2:].upper() == 'GG' and seq1[:2].upper() == 'CC':
+                print "sequence %s guides in both directions!" % seq1
+                seq1 = 'GG' + seq1
+            elif seq1[-2:].upper() == 'GG':
+                seq1 = 'GG' + seq1
+            elif seq1[:2].upper() == 'CC':
+                seq1 += 'CC'
+
+            print "%d) %s" % (count, seq1)
+            count += 1
+            blastseq(seq1, inpath=logfile[:-3]+'blast_in.tmp', outpath=logfile[:-3]+'blast_out.tmp', outfmt='crisprtab')
+            blast_dict = parse_crispr_blast(logfile[:-3]+'blast_out.tmp', gffobj, id_thresh=args.id_thresh, gap_thresh=args.gaps_allowed, shownearest=True)
+
+            report_results(logfile[:-3]+'final_results.info', blast_dict)
+
+    os.system('rm  ' + logfile[:-3]+'blast_in.tmp' )
+    os.system('rm  ' + logfile[:-3]+'blast_out.tmp' )
