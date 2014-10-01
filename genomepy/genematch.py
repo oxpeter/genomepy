@@ -192,7 +192,7 @@ def locus2gene(scaflist, gbeglist, gendlist, gdatalist=False, gff=dbpaths['gff']
 
     return cuffgenes
 
-def findgene(fname):
+def findgene(fname, dbpaths=dbpaths):
     """ Takes the cuffdiff results file (from fname), and compares it with the current
     C.biroi gff file, returning as a dictionary any genes that overlap the cuffdiff result.
 
@@ -228,7 +228,7 @@ def findgene(fname):
         cur_gfor = gfor[result]
         cur_gsta = gsta[result]
         cur_gdif = gdif[result]
-        fobj = open("/Volumes/antqueen/genomics/genomes/C.biroi/armyant.OGS.V1.8.4.gff")
+        fobj = open(dbpaths['gff'])
         for line in fobj:
             col = line.split()
             if col[2] == "mRNA":
@@ -289,8 +289,8 @@ def extractseq(geneID, type='pep', OGS=dbpaths['goterms'][:-4], startpos=0, endp
     fobj.close()
     return geneseq[startpos:endpos]
 
-def fly_orthologs(genelist):
-    fobj = open('/Volumes/antqueen/genomics/experiments/analyses/BGI20120208_Genome/Orthologs/BGI.orthologs.list')
+def fly_orthologs(genelist, dbpaths=dbpaths):
+    fobj = open(dbpaths['ortho'])
     orthodict = {}
     for line in fobj:
         if re.search('Cbir_[0-9]*', line) != None and re.search('DROME', line) != None:
@@ -366,7 +366,9 @@ def go_enrichment(genelist):
         try:
             oddrat, pval = fisher_exact([
                 [dip, len(genelist) - dip],
-                [len(go_obj.fetch_genes(goterm)) - dip, go_obj.count_genes() - len(go_obj.fetch_genes(goterm)) - len(genelist) + dip]
+                [len(go_obj.fetch_genes(goterm)) - dip, go_obj.count_genes()
+                        - len(go_obj.fetch_genes(goterm)) - len(genelist) + dip
+                ]
             ], alternative='greater')
         except ValueError:
             oddrat = 0.0
@@ -468,7 +470,7 @@ def cbir_to_pathway(geneobj):
         gene_ko[geneobj] = ko_to_pathway(kodic[geneobj])
     return gene_ko
 
-def kegg_module_enrichment(genelist):
+def kegg_module_enrichment(genelist, dbpaths=dbpaths):
     """
     For  a given genelist, determines which KEGG modules are significantly
     enriched. Returns both module enrichment P-values, and upper-level classification
@@ -480,7 +482,7 @@ def kegg_module_enrichment(genelist):
 
     #print "Creating Kegg module library"
     ## create Kegg module dictionary:
-    kmod_h = open('/Volumes/antqueen/genomics/experiments/analyses/BGI20120208_Genome/KEGG_pathways/ko00002.keg', 'rb')
+    kmod_h = open(dbpaths['kegg'], 'rb')
 
     kmodlist = []
     kmodd = {}
@@ -576,7 +578,7 @@ def kegg_module_enrichment(genelist):
             [dip, len(kegglist) - dip],
             [kmcount[mod]-dip, len(keggcount) - len(kegglist) - kmcount[mod] + dip]
         ])
-        if dip > 0:
+        if pval < 0.05:
             print "%s\n         In Path  Not in Path\nDEG    :  %-7d %d\nnon-DEG:  %-7d %d\n%.4f\n" % (mod, dip, len(kegglist) - dip,kmcount[mod]-dip, len(keggcount) - len(kegglist) - kmcount[mod] + dip, pval )
         kmododds[mod]   = oddrat
         kmodenrich[mod] = pval
@@ -615,107 +617,102 @@ def kegg_module_enrichment(genelist):
 
     pass
 
-def kegg_pathway_enrichment(genelist, show_all=True, pthresh=0.01):
+def kegg_pathway_enrichment(degs, negs, dbpaths=dbpaths, show_all=True, pthresh=0.01):
     """
-    For  a given genelist, determines which KEGG pathways are significantly
+    For  a given list of differentially expressed genes (and the background of non
+    differentially expressed genes), determines which KEGG pathways are significantly
     enriched. Returns both module enrichment P-values, and upper-level classification
     P-values (as dictionaries).
     """
 
-    num_ko, kegglist = cbir_to_kegg(genelist)
-    print "genelist size: %-4d KO size: %d" % (len(genelist), len(kegglist))
+    deg_num_ko, deg_keggs = cbir_to_kegg(degs)
+    neg_num_ko, neg_keggs = cbir_to_kegg(negs)
 
-    ## create Kegg module dictionary:
-    kmod_h = open('/Volumes/antqueen/genomics/experiments/analyses/BGI20120208_Genome/KEGG_pathways/ko00001.keg', 'rb')
+    print "%-4d kegg pathways from %d DEGs" % (len(deg_keggs), len(degs) )
+    print "%-4d kegg pathways from %d nonDEGs" % (len(neg_keggs), len(negs) )
 
-    ## kmod terms (copied from kegg_module_enrichment() ), are used here to capture the
-    ## kegg pathway (indicated in ko00001.keg by [PATH:ko#####] )
-    kmodlist = []
-    kmodd = {}
-    kmodcount = 0
-    kmcount = {}
-    kmod = 'none'
+    # create dictionary of kegg pathways {pathwaytype:{pathway:[ko1,ko2,ko3]}}
+    pathwaytype_dict = {}
+    pathway_dict = {}
+    pathway_lookup = {}
 
-    kod = {}    # this is to count how many KOs there are in the list
-
-    for line in kmod_h:
-        if line[0] == 'C':     # Kegg Pathway
-            kmcount[kmod] = kmodcount
-            kmodcount = 0
-            try:
-                ksearch = re.search("C +([0-9]*) *(.*)\[PATH", line)
-                kmod = ksearch.group(1)
-                kmoddef = ksearch.group(2)
-                kmodlist.append(kmod)
-                #print ksearch.group(0), "\n", kmod
-            except:
-                kmod = 'none'
-                kmoddef = 'none'
-
-        elif line[0] == 'D':    # Kegg term
-            try:
-                ko = re.search("(K[0-9]*)", line).group(1)
-
-                kmodcount += 1
-                kgroupbcount[ko] = True
-                kgroupccount[ko] = True
-                try:
-                    kmodd[ko].append(kmod)
-                    kgroupb[ko].append(b_group)
-                    kgroupc[ko].append(c_group)
-                except:
-                    kmodd[ko] = [kmod]
-                    kgroupb[ko] = [b_group]
-                    kgroupc[ko] = [c_group]
-            except:
-                pass
-    kmcount[kmod] = kmodcount           # add final kmmod group count to dictionary
+    print "extracting pathways..."
+    ko1_h = open(dbpaths['kegg'], 'rb')
+    for line in ko1_h:
+        if line[0] == 'B':   # Kegg path type eg: B  <b>Replication and repair</b>
+            pathtype_f = re.search('B.*<b>(.*)<', line)
+            if pathtype_f is not None:
+                pathtype = pathtype_f.group(1)
+            else:
+                pathtype = 'unknown'
+            pathwaytype_dict[pathtype] = {}
+        elif line[0] == 'C':     # Kegg Pathway eg: 01200 Carbon metabolism [PATH:ko01200]
+            pathway_f = re.search("C +([0-9]*) *(.*)\[PATH", line)
+            if pathway_f is not None:
+                pathway_id = pathway_f.group(1)
+                pathway_name = pathway_f.group(2)
+            else:
+                pathway_id = 'unknown'
+                pathway_name = 'unknown'
+            pathway_dict[pathway_id] = {}
+            pathway_lookup[pathway_id] = pathway_name
+        elif line[0] == 'D':   # Kegg term eg: K00844  HK; hexokinase [EC:2.7.1.1]
+            koterm_f = re.search("(K[0-9]*)", line)
+            if koterm_f is not None:
+                koterm = koterm_f.group(1)
+            else:
+                koterm = 'unknown'
+            pathwaytype_dict[pathtype][koterm] = 1
+            pathway_dict[pathway_id][koterm] =  1
 
 
-    kmodtestsize = len(kmodlist)    # for multiple testing correction
+    print "calculating enrichment..."
+    pathwaytype_ps = {}
+    pathway_ps = {}
+    # count number of degs and negs in each pathway:
+    for pathwaytype in pathwaytype_dict:
+        pwtsize = len(pathwaytype_dict)
+        degs_in_path = sum([1 for ko in pathwaytype_dict[pathwaytype] if ko in deg_keggs])
+        negs_in_path = sum([1 for ko in pathwaytype_dict[pathwaytype] if ko in neg_keggs])
+        degs_not_in = len(deg_keggs) - degs_in_path
+        negs_not_in = len(neg_keggs) - negs_in_path
 
-    #print "calculating Fisher's exact test"
-    # count number of kegglist KOs are in each kegg module, perform Fisher's exact test
-    dip = 0
-    dipcount = {}               # possibly unnecessary
-    kmodenrich = {}
-    kmododds   = {}
-    gene_kos   = {}
+        oddrat, pval = fisher_exact([ [degs_in_path, degs_not_in],
+                                    [negs_in_path, negs_not_in] ],
+                                      alternative='greater')
+        pathwaytype_ps[pathwaytype] = pval
 
-    for mod in kmodlist:
-        for ko in kegglist:
-            if ko not in kmodd: # some KOs do not exist in a module.
-                pass
-            elif mod in kmodd[ko]:
-                gene_kos[kegglist[ko]] = ko
-                dip += 1
-        dipcount[mod] = dip     # possibly unnecessary
-        oddrat, pval = fisher_exact([
-            [dip, len(kegglist) - dip],
-            [kmcount[mod]-dip, num_ko - len(kegglist) - kmcount[mod] + dip]
-        ], alternative='greater')
-        if pval < pthresh and len(kegglist) >= 1:
+        if pval < pthresh:
             print "%s\n         \
             In Path  Not in Path\n\
             DEG    :  %-7d %d\n\
             non-DEG:  %-7d %d\n\
             Odds Ratio:%.3f\n\
-            P-value:%.4f\n" % (mod,
-            dip, len(kegglist) - dip,
-            kmcount[mod]-dip, num_ko - len(kegglist) - kmcount[mod] + dip,
+            P-value:%.4f\n" % (pathwaytype,degs_in_path,degs_not_in,negs_in_path,negs_not_in,
             oddrat, pval)
-        kmododds[mod]   = oddrat
-        kmodenrich[mod] = pval
-        dip = 0     # reset for next module
+
+
+    for pathway in pathway_dict:
+        pwtsize = len(pathway_dict)
+        degs_in_path = sum([1 for ko in pathway_dict[pathway] if ko in deg_keggs])
+        negs_in_path = sum([1 for ko in pathway_dict[pathway] if ko in neg_keggs])
+        degs_not_in = len(deg_keggs) - degs_in_path
+        negs_not_in = len(neg_keggs) - negs_in_path
+
+        oddrat, pval = fisher_exact([ [degs_in_path, degs_not_in],
+                                    [negs_in_path, negs_not_in] ],
+                                      alternative='greater')
+        pathway_ps[pathway + ' ' + pathway_lookup[pathway]] = pval
 
     ## Fisher's Exact Test:
-    #               In Pathway:         Not in Pathway:                                         SUM:
-    #   DEG     :   dip                 len(kegglist) - dip                                     len(kegglist)
-    #   non-DEG :   kmcount[mod]-dip    len(keggcount) - len(kegglist) - kmcount[mod] + dip     len(keggcount) - len(kegglist)
-    #   SUM     :   kmcount[mod]        len(keggcount) - kmcount[mod]                           len(keggcount)
+    #               In Pathway:         Not in Pathway:
+    #   DEG     :   degs_in_path        degs_not_in
+    #   non-DEG :   negs_in_path        negs_not_in
     #
 
-    return kmodenrich, gene_kos
+    return pathwaytype_ps, pathway_ps
+
+
 
 def collect_kegg_pathways(minsize=0, filename=dbpaths['keggpathways']):
     """
