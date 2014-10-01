@@ -207,6 +207,7 @@ class My_gff(object):
         self.genecount = 0
         self.geneids = {}
         self.genescaf = {}
+        self.exondict = {}
 
         gff_h = open(gff_file,'rb')
         for line in gff_h:
@@ -215,7 +216,7 @@ class My_gff(object):
                 scaf = line.split()[0]
                 start = min(int(line.split()[3]), int(line.split()[4]))
                 stop = max(int(line.split()[3]), int(line.split()[4]))
-                geneid = re.search('ID=([^;]*);', line.split('\t')[8]).groups()[0]
+                geneid = re.search('ID=([^;]*)', line.split('\t')[8]).groups()[0]
                 self.genescaf[geneid] = scaf
                 try:
                     genename = re.search('Name=([^;]*);', line.split('\t')[8]).groups()[0]
@@ -226,8 +227,17 @@ class My_gff(object):
                     self.genedict[scaf][geneid] = (start, stop)
                 else:
                     self.genedict[scaf] = {geneid:(start, stop)}
+            if line.split()[2] == 'CDS':
+                parentid = re.search('Parent=([^;]*)', line.split('\t')[8]).groups()[0]
+                start = min(int(line.split()[3]), int(line.split()[4]))
+                stop = max(int(line.split()[3]), int(line.split()[4]))
+                if parentid in self.exondict:
+                    self.exondict[parentid].append((start, stop))
+                else:
+                    self.exondict[parentid] = [(start, stop)]
 
     def __contains__(self, locus):
+        "looks to see if locus is within gene. Does not consider introns/exons"
         scaf, posn = locus
         ingene = False
         try:
@@ -261,6 +271,66 @@ class My_gff(object):
             ingene = None
 
         return ingene
+
+    def ingene(self, locus):
+        """looks to see if locus is within gene. Does not consider introns/exons.
+        If true, returns the gene name"""
+        scaf, posn = locus
+        ingene = False
+        try:
+            for gene in self.genedict[scaf]:
+                if self.genedict[scaf][gene][0] <= posn <= self.genedict[scaf][gene][1]:
+                    ingene = gene
+        except KeyError:
+            ingene = None
+
+        return ingene
+
+    def inexon(self, posn, locus, gene=False):
+        """checks to see if position is in an exonic region.
+        Can either give a scaf + posn (gene=False), and it will find if it's in a gene,
+        and if it is, if it's in an exon. Or you can give a posn + gene (set gene=True),
+        and it will quickly check if it's in the exon of that gene"""
+        if not gene: # first check to see if it's in a gene (and get that gene)
+            geneid = self.ingene((locus,posn))
+            if not geneid:
+                return False
+        else:
+            geneid = locus
+
+        # now we have the geneid...
+        for start, end in self.exondict[geneid]:
+            if start <= posn <= end:
+                return True
+        else:
+            return False
+
+    def findnearest(self, scaffold, hitpos):
+        """ looks for the nearest gene to a given locus """
+
+        geneid = self.ingene((scaffold, hitpos))
+        if geneid:
+            upstream = (0, geneid)
+            downstream = (0, geneid)
+
+        else:
+            closestup = 999999999
+            closestdown = 999999999
+            upgene = 'No gene upstream on scaffold'
+            downgene = 'No gene downstream on scaffold'
+            if scaffold not in self.genedict:
+                return ((closestup, upgene), (closestdown, downgene))
+            for gene in self.genedict[scaffold]: # check distances between locus and genes
+                if 0 < hitpos - self.genedict[scaffold][gene][0] < closestup:
+                    closestup = hitpos - self.genedict[scaffold][gene][0]
+                    upgene = gene
+                if 0 < self.genedict[scaffold][gene][0] - hitpos < closestdown:
+                    closestdown = self.genedict[scaffold][gene][0] - hitpos
+                    downgene = gene
+            upstream = (closestup, upgene)
+            downstream = (closestdown, downgene)
+
+        return upstream, downstream
 
     def nameit(self, geneid):
         try:
