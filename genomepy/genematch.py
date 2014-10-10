@@ -798,11 +798,12 @@ def collect_go_pathways(minsize=0, filename=dbpaths['goterms']):
     return gorefined_dict
 
 def cbir_ncbi(geneobj, dbpaths=dbpaths):
+    "extract NCBI gene name for given Cbir reference ids"
     ncbi_h = open(dbpaths['ncbipep'], 'rb')
 
     ncbi_d = {}
     for line in ncbi_h:
-        defsearch = re.search("\[(Cbir[^\s]*)\]", line)
+        defsearch = re.search("\[(Cbir[^\s\]]*)\]", line)
         if defsearch is not None:
             ncbi_d[defsearch.group(1)] = line.strip()[1:]
 

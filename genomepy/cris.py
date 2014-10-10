@@ -14,7 +14,7 @@ import time
 import Bio.Blast.NCBIXML as xml
 from Bio.Seq import Seq
 
-from genomepy import config, gffparser
+from genomepy import config, gffparser, genematch
 
 ###### INITIALISE THE FILE PATHS NEEDED FOR ANALYSIS #######################
 
@@ -22,7 +22,7 @@ dbpaths = config.import_paths()
 
 ############################################
 
-from genomepy import genematch
+
 
 def findCRISPRsites(sequence_file=dbpaths['ass'], pattern='(?=(.{20}.[Gg][Gg]))|(?=([Cc][Cc]..{20}))'):
     " extract all CRISPR site matches from the genome as tuples containing each CRISPR sequence: "
@@ -127,7 +127,7 @@ def blastseq(seq, seqnames=None, inpath='/Users/POxley/blastinput.tmp' , outpath
 
     elif outfmt == 'crisprtab':
         # for tab delimited values used in crispr search parsing:
-        blastcmd = 'blastn -query ' + inpath + " -db /Volumes/antqueen/genomics/indices/BLAST_databases/nucleotide/Cbir.v3.0 -outfmt '6 qseqid qlen nident mismatch gaps qseq sseqid sstart send' -word_size 7 -evalue 1000000 -out " + outpath
+        blastcmd = 'blastn -query ' + inpath + " -db /Volumes/antqueen/genomics/indices/BLAST_databases/nucleotide/Cbir.v3.0 -outfmt '6 qseqid qlen nident mismatch gaps sseq sseqid sstart send qstart' -word_size 7 -evalue 1000000 -out " + outpath
 
     else:
         # if you want blast results that are viewer friendly:
@@ -177,19 +177,22 @@ def parse_crispr_blast(blast_results, gffobj, id_thresh=18, gap_thresh=0, showne
     blastresults_h = open(blast_results, 'rb')
     blastparser = (line.split() for line in blastresults_h)
     # for each sequence, create a list of blast results (each result contained as a dict):
-    for qseqid, qlen, nident, mismatch, gaps, qseq, sseqid, sstart, send in blastparser:
+    for qseqid, qlen, nident, mismatch, gaps, sseq, sseqid, sstart, send, qstart in blastparser:
         # check to see if result has PAM sequence or not:
-        if qseqid[-2:].upper() == 'GG':
+        if sseq[-2:].upper() == 'GG':
             haspam = True
             cutsite = int(send) - 3
-        elif qseqid[:2].upper() == 'CC':
+        elif sseq[:2].upper() == 'CC':
             haspam = True
             cutsite = int(sstart) + 3
+        else:
+            haspam = False
+            cutsite = int(sstart)
 
         # check to see if cutsite is in exon:
         exonic = gffobj.inexon(cutsite, sseqid, gene=False)
 
-        if int(nident) >= id_thresh and int(gaps) <= gap_thresh and haspam:
+        if int(nident) >= id_thresh and int(gaps) <= gap_thresh:
             if shownearest:
                 upstream, downstream = gffobj.findnearest(sseqid, cutsite)
             else:
@@ -198,8 +201,8 @@ def parse_crispr_blast(blast_results, gffobj, id_thresh=18, gap_thresh=0, showne
 
             curr_result = {'downdist':downstream[0], 'downgene':downstream[1],
                 'updist':upstream[0], 'upgene':upstream[1],'qlen':int(qlen),
-                'nident':int(nident), 'mismatch':int(mismatch), 'gaps':int(gaps),
-                'qseq':qseq, 'sseqid':sseqid, 'sstart':int(sstart), 'send':int(send),
+                'nident':int(nident), 'mismatch':len(qseqid)-int(nident), 'gaps':int(gaps),
+                'qseq':"%s%s" % (' ' * int(qstart), sseq), 'sseqid':sseqid, 'sstart':int(sstart), 'send':int(send),
                 'exonic':exonic, 'cutsite':cutsite, 'haspam':haspam}
 
             if qseqid in results_dict:
@@ -288,13 +291,14 @@ def create_log(args):
     log_h.close()
     return filename
 
-def report_results(filename, blast_dict):
+def report_results(filename, blast_dict, header=True):
     results_h = open(filename, "a")
-    results_h.write( "%-26s %-20s %-10s || %-4s %-4s %-4s %-5s || %-5s %s %s %s %s\n" % ('qseq','sseqid','cutsite','nident','mismatch','gaps','PAM','exonic?','downgene','downdist','upgene','updist') )
+    if header:
+        results_h.write( "   %-26s %-20s %-10s || %-4s %-4s %-4s %-5s || %-5s %s %s %s %s\n" % ('qseq','sseqid','cutsite','nident','mismatch','gaps','PAM','exonic?','downgene','downdist','upgene','updist') )
     for seqid in blast_dict:
-        results_h.write( "\n## %s (%d matches) %s\n" % (seqid, len(blast_dict[seqid]), '#' * 30) )
+        results_h.write( "\n## %s - %d bp (%d matches) %s\n" % (seqid, len(seqid), len(blast_dict[seqid]), '#' * 24) )
         for match in blast_dict[seqid]: # each match is a dictionary
-            results_h.write( "%(qseq)-26s %(sseqid)-20s %(cutsite)-10d || %(nident)-4d %(mismatch)-4d %(gaps)-4d PAM:%(haspam)-5s || %(exonic)-5s %(downgene)s %(downdist)-10d %(upgene)s %(updist)d\n" % (match) )
+            results_h.write( "  %(qseq)-26s %(sseqid)-20s %(cutsite)-10d || %(nident)-4d %(mismatch)-4d %(gaps)-4d PAM:%(haspam)-5s || %(exonic)-5s %(downgene)s %(downdist)-10d %(upgene)s %(updist)d\n" % (match) )
     results_h.close()
 
 
@@ -326,6 +330,8 @@ if __name__ == '__main__':
         args.pattern = '(?=([Gg][Gg].{16}.[Gg][Gg]))|(?=([Cc][Cc].{16}[Cc][Cc].[Cc][Cc]))'
     if args.guide_rna == 'ln':  # long endogenous
         args.pattern = '(?=([Gg][Gg].{18}.[Gg][Gg]))|(?=([Cc][Cc]..{18}[Cc][Cc]))'
+    else:
+        args.guide_rna = 'manual'
 
     logfile = create_log(args)
 
@@ -357,20 +363,58 @@ if __name__ == '__main__':
     blast_file = logfile[:-3] + 'blast.info'
     print "Number of hits above threshold for each query will be saved to %s" % (blast_file)
     count = 1
-    t0, t1, t2, t3 = (0,0,0,0)
+    tstart = time.time()
+    pbcount = 0
     for seq1 in resultslist:
-        print "Time: blast - %ds\tparsing - %ds\treporting - %ds" % (t1-t0, t2-t1, t3-t2)
-        print "%d) %s " % (count, seq1)
-        t0 = time.time()
+        # progress tracker:
+        if pbcount > 0:
+            time_elapsed = time.time() - tstart
+            time_per_cycle = 1. *  time_elapsed / pbcount
+            time_remaining = (len(resultslist) - pbcount) * time_per_cycle
+            m, s = divmod(time_remaining, 60)
+            h, m = divmod(m, 60)
+            if pbcount > 0:
+                print '\r>> %d of %d genes complete. ETA to completion: %d:%02d:%02d                      ' % (pbcount, len(resultslist), h, m, s),
+            sys.stdout.flush()
+        else:
+            time_remaining = len(resultslist) * 90
+            m, s = divmod(time_remaining, 60)
+            h, m = divmod(m, 60)
+            print '>> 0 of %d genes complete. Completion in approx: %d:%02d:%02d                      ' % (len(resultslist), h, m, s),
+            sys.stdout.flush()
+
+        # perform blast, parse results, and write to file:
+        pbcount += 1
         count += 1
         blastseq(seq1, inpath=logfile[:-3]+'blast_in.tmp', outpath=logfile[:-3]+'blast_out.tmp', outfmt='crisprtab')
-        t1 = time.time()
         blast_dict = parse_crispr_blast(logfile[:-3]+'blast_out.tmp', gffobj, id_thresh=args.id_thresh, gap_thresh=args.gaps_allowed, shownearest=True)
-        t2 = time.time()
-        report_results(logfile[:-3]+'final_results.info', blast_dict)
-        t3 = time.time()
+        if count == 2:
+            report_results(logfile[:-3]+'final_results.info', blast_dict)
+        else:
+            report_results(logfile[:-3]+'final_results.info', blast_dict, False)
+
+
     if args.exogenous: # have to blast sequence with the extra T7 GG appended to the search
+        tstart = time.time()
+        pbcount = 0
         for seq1 in resultslist:
+            # progress tracker:
+            if pbcount > 0:
+                time_elapsed = time.time() - tstart
+                time_per_cycle = 1. *  time_elapsed / pbcount
+                time_remaining = (len(resultslist) - pbcount) * time_per_cycle
+                m, s = divmod(time_remaining, 60)
+                h, m = divmod(m, 60)
+                if pbcount > 0:
+                    print '\r>> %d of %d genes complete. ETA to completion: %d:%02d:%02d                      ' % (pbcount, len(resultslist), h, m, s),
+                sys.stdout.flush()
+            else:
+                time_remaining = len(resultslist) * 90
+                m, s = divmod(time_remaining, 60)
+                h, m = divmod(m, 60)
+                print '\n>> 0 of %d genes complete. Completion in approx: %d:%02d:%02d                      ' % (len(resultslist), h, m, s),
+                sys.stdout.flush()
+
             # determine whether sequence is rev comp or straight, and append GG/CC:
 
             if seq1[-2:].upper() == 'GG' and seq1[:2].upper() == 'CC':
@@ -381,12 +425,18 @@ if __name__ == '__main__':
             elif seq1[:2].upper() == 'CC':
                 seq1 += 'CC'
 
-            print "%d) %s" % (count, seq1)
+            pbcount += 1
             count += 1
             blastseq(seq1, inpath=logfile[:-3]+'blast_in.tmp', outpath=logfile[:-3]+'blast_out.tmp', outfmt='crisprtab')
             blast_dict = parse_crispr_blast(logfile[:-3]+'blast_out.tmp', gffobj, id_thresh=args.id_thresh, gap_thresh=args.gaps_allowed, shownearest=True)
 
-            report_results(logfile[:-3]+'final_results.info', blast_dict)
+            if count == 2:
+                report_results(logfile[:-3]+'final_results.info', blast_dict)
+            else:
+                report_results(logfile[:-3]+'final_results.info', blast_dict, False)
+
+
+
 
     os.system('rm  ' + logfile[:-3]+'blast_in.tmp' )
     os.system('rm  ' + logfile[:-3]+'blast_out.tmp' )
