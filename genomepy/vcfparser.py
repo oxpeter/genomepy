@@ -15,8 +15,53 @@ from scipy import stats
 
 from genomepy import gffparser as gp
 import qvalue
+from genomepy import config
+
+###### INITIALISE THE FILE PATHS NEEDED FOR ANALYSIS #######################
+
+dbpaths = config.import_paths()
 
 ########################################################################################
+
+def get_bamfiles(rootdir):
+    """returns a list of non-discordant (ie proper_pair) bam files sorted as statary and
+    foraging"""
+    # find all the appropriate bam files:
+    # initialise lists of file paths for statary and foraging sample bam files
+    stat_bams = []
+    forg_bams = []
+    for root, dirs, files in os.walk(rootdir):
+        for file in files:
+            if re.search('proper_pairs.bam.sorted.bam.bam$', file) is not None:
+                if re.search('S_', root) is not None:
+                    # file is statary
+                    stat_bams.append(os.path.join(root,file))
+                elif re.search('F_', root) is not None:
+                    #file is foraging:
+                    forg_bams.append(os.path.join(root,file))
+    return stat_bams, forg_bams
+
+def create_vcf(filelist, assembly, outfile):
+
+    root_dir = os.path.dirname(outfile)
+    raw_bcf = root_dir + '/var.raw.bcf'
+    # set command flags:
+    mpileup = 'samtools mpileup -uf ' + assembly
+    bcftools1 = '| bcftools view -bvcg - > ' + raw_bcf
+    bcftools2 = 'bcftools view ' + raw_bcf
+    vcfutils = '| vcfutils.pl varFilter -D100 -d 10 > ' + outfile
+
+    # join together:
+    cmd1 = " ".join([mpileup] + filelist + [bcftools1])
+    cmd2 = " ".join([bcftools2, vcfutils])
+
+    # run commands:
+    print "Running:\n%s" % cmd1
+    os.system(cmd1)
+    print "Running:\n%s" % cmd2
+    os.system(cmd2)
+
+
 
 def parse_lines(category,filename):
     vcf_h = open(filename, 'rb')
@@ -96,7 +141,8 @@ def find_ratios(file1):
     return snps
 
 def fdr_q(plist):
-    "calculates the false discovery rate threshold for a list of p-values"
+    """ DEPRECATED: USE hicluster.p_to_q INSTEAD!
+    calculates the false discovery rate threshold for a list of p-values"""
     m = len(plist)
     plist.sort()
 
@@ -113,7 +159,8 @@ def fdr_q(plist):
     return maxp
 
 def find_q(plist):
-    "given (unsorted) list of p-values, returns dictionary of { p-value:q-value }"
+    """ DEPRECATED: USE hicluster.p_to_q INSTEAD!
+    given (unsorted) list of p-values, returns dictionary of { p-value:q-value }"""
 
     pv_array = numpy.array(sorted(plist))
     qv_array = qvalue.estimate(pv_array)
@@ -407,13 +454,20 @@ def plot_pvalues(plist):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Parses VCF files. To perform allele ratio test, first run on each VCF file seperately.")
-    parser.add_argument("vcf_file", type=str, help="The VCF file for parsing")
+    parser.add_argument('-v', "--vcf_file", type=str, help="The VCF file for parsing")
     parser.add_argument("-C", "--cat", type=str, dest="category", default='DP4', help="Specify the category to parse")
     parser.add_argument("-B", "--binomial_test", action='store_true', dest="binary", default=False, help="Perform binomial probability test of allele ratios")
     parser.add_argument("-F", "--fishers_test", action='store_true', dest="fishers", default=False, help="Perform Fisher's Exact Test on allele ratios")
     parser.add_argument("-r", "--ratios", type=str, dest="ratio_file", default=False, help="second vcf file for comparing allele ratios using Fisher's Exact test\n(Requires vcf_results.list files)")
+    parser.add_argument("-R", "--rootdir", type=str, help="the base directory containing all bam files (can exist in subdirectories of this dir).")
+    parser.add_argument("-o", "--outfile", type=str, default=os.getcwd() + '/outfile', help="the path of the vcf output file")
+
     args = parser.parse_args()
 
+    if args.rootdir:
+        statbams, forgbams = get_bamfiles(args.rootdir)
+        create_vcf(statbams, dbpaths['ass'], args.outfile + 'stat.vcf')
+        create_vcf(forgbams, dbpaths['ass'], args.outfile + 'forg.vcf')
 
 
 
@@ -447,7 +501,7 @@ if __name__ == '__main__':
 
 
 
-    else:
+    elif args.vcf_file:
         parse_lines(args.category, args.vcf_file)
 
 
