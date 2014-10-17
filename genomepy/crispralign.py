@@ -115,6 +115,12 @@ def align_reads(lanes, readfiles, idx_path, idx_name, out_dir, fq_dir):
         # this finds all of the .fastq files associated with the sample number
         fq_path = fq_dir + '/*' + lane + '_*.fastq'
         reads = glob.glob(fq_path)
+        # gsnap only works on unzipped files. Therefore need to check files are .fastq:
+
+        for read in reads[:]:
+            if re.search("gz$", read) is not None:
+                os.system('gunzip ' + read)
+                reads = glob.glob(fq_path)
 
 
         # first, let's align the reads with gsnap - set to allow indels of +/- 250bp
