@@ -293,8 +293,8 @@ def fly_orthologs(genelist, dbpaths=dbpaths):
     fobj = open(dbpaths['ortho'])
     orthodict = {}
     for line in fobj:
-        if re.search('Cbir_[0-9]*', line) != None and re.search('DROME', line) != None:
-            cbgene = re.search('Cbir_[0-9]*', line).group()
+        if re.search("(Cbir[A-Za-z0-9_\(\)\.\/]*)", line) != None and re.search('DROME', line) != None:
+            cbgene = re.search("(Cbir[A-Za-z0-9_\(\)\.\/]*)", line).group()
             if  cbgene in genelist:
                 orthodict[cbgene] = re.search('DME\|(.*)_DROME', line).groups()[0]
     fobj.close()
@@ -803,7 +803,7 @@ def cbir_ncbi(geneobj, dbpaths=dbpaths):
 
     ncbi_d = {}
     for line in ncbi_h:
-        defsearch = re.search("\[(Cbir[^\s\]]*)\]", line)
+        defsearch = re.search("\[(Cbir[A-Za-z0-9_\(\)\.\/]*)]", line)
         if defsearch is not None:
             ncbi_d[defsearch.group(1)] = line.strip()[1:]
 

@@ -63,7 +63,7 @@ def find_latest(filelist, seqtype, fextension):
     "finds the most recent version of a given file in filelist"
     shortlist = []
     for filename in filelist:
-        pattern = '(' + seqtype + ')\.[Vv]?([0-9]*\.[0-9]*\.?[0-9]*)[\._]?(' + fextension + ')'
+        pattern = '(' + seqtype + ')\.[Vv]?([0-9]*\.[0-9]*\.?[0-9]*)[\._]?(' + fextension + ')$'
         handle = re.search( pattern, filename )
         if handle is not None:
             version = handle.group(2)
