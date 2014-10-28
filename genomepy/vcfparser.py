@@ -7,6 +7,7 @@ import math
 import os
 import re
 import sys
+import time
 
 from Bio.Alphabet import generic_dna, IUPAC
 import matplotlib.pyplot as plt
@@ -44,10 +45,10 @@ def get_bamfiles(rootdir):
 def create_vcf(filelist, assembly, outfile):
 
     root_dir = os.path.dirname(outfile)
-    raw_bcf = root_dir + '/var.raw.bcf'
+    raw_bcf = root_dir + '/' + str(time.time()) + '_var.raw.bcf'
     # set command flags:
     mpileup = 'samtools mpileup -uf ' + assembly
-    bcftools1 = '| bcftools view -bvcg - > ' + raw_bcf
+    bcftools1 = ' | bcftools view -bvcg - > ' + raw_bcf
     bcftools2 = 'bcftools view ' + raw_bcf
     vcfutils = '| vcfutils.pl varFilter -D100 -d 10 > ' + outfile
 
@@ -466,8 +467,8 @@ if __name__ == '__main__':
 
     if args.rootdir:
         statbams, forgbams = get_bamfiles(args.rootdir)
-        create_vcf(statbams, dbpaths['ass'], args.outfile + 'stat.vcf')
-        create_vcf(forgbams, dbpaths['ass'], args.outfile + 'forg.vcf')
+        create_vcf(statbams, dbpaths['assgi'], args.outfile + 'stat.vcf')
+        create_vcf(forgbams, dbpaths['assgi'], args.outfile + 'forg.vcf')
 
 
 
