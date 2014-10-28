@@ -305,6 +305,18 @@ class My_gff(object):
         else:
             return False
 
+    def closest_splice(self, locus, posn):
+        closest_distance = None
+        geneid = self.ingene((locus, posn))
+        if self.inexon(posn, locus):
+            closest_distance = 999999999999
+            for start, end in self.exondict[geneid]:
+                if posn - start < closest_distance:
+                    closest_distance =  posn - start
+                if end - posn < closest_distance:
+                    closest_distance =  end - posn
+        return closest_distance
+
     def findnearest(self, scaffold, hitpos):
         """ looks for the nearest gene to a given locus """
 
@@ -610,8 +622,8 @@ def bed2gtf(bedfile):
     genenames = {}
     genesizes = {}
     genestrands = {}
-
-
+    genelist = {}
+    scaffoldlist = {}
 
     for line in bed_h:
         if len(line.split()) < 6:
@@ -624,36 +636,39 @@ def bed2gtf(bedfile):
         strand      = fields[5]
         labels      = fields[3].split(";")
 
-        try:
-            gene_iso    = re.search("(\w+)\.([A-Za-z0-9_\(\)\.]*)", labels[0])
-            unexpressed = re.search("ID=(Cbir[A-Za-z0-9_\(\)\.]*)", labels[0]) # genes that are not expressed won't have the cufflinks id
-        except IndexError:
-            print fields[3], labels
+        #try:
+        #    gene_iso    = re.search("(\w+)\.([A-Za-z0-9_\(\)\.]*)", labels[0])
+        #    unexpressed = re.search("ID=(Cbir[A-Za-z0-9_\(\)\.]*)", labels[0]) # genes that are not expressed won't have the cufflinks id
+        #except IndexError:
+        #    print fields[3], labels
 
-        if unexpressed is not None:
-            geneid      = unexpressed.group(1)
-            isoform     = geneid
-        else:
-            try:
-                geneid      = gene_iso.group(1)
-                isoform     = gene_iso.group(2)
-            except:
-                print line
-                print labels[0]
-                die
-
-
+        #if unexpressed is not None:
+        #    geneid      = unexpressed.group(1)
+        #    isoform     = geneid
+        #else:
+        #    try:
+        #        geneid      = gene_iso.group(1)
+        #        isoform     = gene_iso.group(2)
+        #    except:
+        #        print line
+        #        print labels[0]
+        #        die
+        geneid = labels[1]
+        isoform = labels[0][3:]
+        scaffoldlist[geneid] = scaf
         # update gene information:
-        try:
-            genenames[geneid] += isoform + ">"
-        except KeyError:
-            genenames[geneid] = isoform + ">"
+        #try:
+        #    genenames[geneid] += isoform + ">"
+        #except KeyError:
+        #    genenames[geneid] = isoform + ">"
 
         if geneid in genesizes:
-            if min(gene_start, gene_end) < min(genesizes[geneid]):
-                genesizes[geneid][genesizes[geneid].index(min(genesizes[geneid]))] = min(gene_start, gene_end)
-            if max(gene_start, gene_end) > max(genesizes[geneid]):
-                genesizes[geneid][genesizes[geneid].index(max(genesizes[geneid]))] = max(gene_start, gene_end)
+            genesizes[geneid] += [gene_start, gene_end]
+
+            #if min(gene_start, gene_end) < min(genesizes[geneid]):
+            #    genesizes[geneid][genesizes[geneid].index(min(genesizes[geneid]))] = min(gene_start, gene_end)
+            #if max(gene_start, gene_end) > max(genesizes[geneid]):
+            #    genesizes[geneid][genesizes[geneid].index(max(genesizes[geneid]))] = max(gene_start, gene_end)
         else:
             genesizes[geneid] = [gene_start, gene_end]
 
@@ -666,44 +681,120 @@ def bed2gtf(bedfile):
 
         # create gtf and gff files:
         transcript_line = "\t".join([scaf, "gffparser", "transcript", str(gene_start), str(gene_end), '1', strand, ".", 'gene_id "' + geneid + '"; transcript_id "' + isoform + '";\n'])
-        mRNA_line = "\t".join([scaf, "gffparser", "mRNA", str(gene_start), str(gene_end), ".", strand, ".", "ID=" + isoform + ";Parent=g_" + geneid + "\n"])
+        gene_line = '\t'.join([scaf, "gffparser", "gene", str(min(genesizes[geneid])), str(max(genesizes[geneid])), '.', genestrands[geneid], '.', 'ID=' + geneid + ';Name=' + geneid + '\n'])
+        mRNA_line = "\t".join([scaf, "gffparser", "mRNA", str(gene_start), str(gene_end), ".", strand, ".", "ID=m_" + isoform + ";Parent=" + geneid + "\n"])
+
         gtf_h.write(transcript_line)
         gff_h.write(mRNA_line)
 
         for exon_start, exon_length in zip(exon_starts, exon_lengths):
             gtf_line = '\t'.join([scaf, "gffparser", "exon", str(exon_start + gene_start), str(exon_start + gene_start + exon_length - 1), '1', strand, '.', 'gene_id "' + geneid + '"; transcript_id "' + isoform + '"; exon_number "' + str(exon_number) + '";\n'])
-            gff_CDS  = '\t'.join([scaf, "gffparser", "CDS",  str(exon_start + gene_start), str(exon_start + gene_start + exon_length - 1), '.', strand, '.', 'ID=cds.' + str(exon_number) + isoform + ';Parent=' + isoform + '\n'])
+            gff_CDS  = '\t'.join([scaf, "gffparser", "CDS",  str(exon_start + gene_start), str(exon_start + gene_start + exon_length - 1), '.', strand, '.', 'ID=cds.' + str(exon_number) + isoform + ';Parent=m_' + isoform + '\n'])
             gtf_h.write(gtf_line)
             gff_h.write(gff_CDS)
             exon_number += 1
 
 
     #convert gene name to Cbir version if available:
-    for geneid in genenames:
-        try:
-            genename = re.search("(Cbir[A-Za-z0-9_\(\)]+)", genenames[geneid]).group(1)
-        except:
-            genename = geneid
-        gene_line = '\t'.join([scaf, "gffparser", "gene", str(min(genesizes[geneid])), str(max(genesizes[geneid])), '.', genestrands[geneid], '.', 'ID=g_' + geneid + ';Name=' + genename + '\n'])
+    for geneid in genesizes:
+        gene_line = '\t'.join([scaffoldlist[geneid], "gffparser", "gene", str(min(genesizes[geneid])), str(max(genesizes[geneid])), '.', genestrands[geneid], '.', 'ID=' + geneid + ';Name=' + geneid + '\n'])
         gff_h.write(gene_line)
 
     gff_h.close()
     gtf_h.close()
 
+def highest_cbir(file=dbpaths['pep']):
+    "Finds the current highest number assigned to Cbir gene ids"
+    pep_h = open(file, 'rb')
+
+    highest = 1
+    for line in pep_h:
+        num = re.search("(Cbir[A-Za-z0-9_\(\)\.\/]*)", line)
+        if num is not None:
+            if int(num.group(1)) > highest:
+                highest = int(num.group(1))
+
+    return highest
+
+
+
+def assign_cbir(gtffile):
+    """Takes cuffcompare gtf file and extracts XLOC id along with Cbir id.
+
+    """
+
+    gtf_h = open(gtffile, 'rb')
+    locus = {}
+    details = {}
+    new_cbir = highest_cbir() + 1
+    for line in gtf_h:
+        fields = line.split('\t')
+        detail_list = fields[8].strip().split(';')
+        try:
+            details = dict([(x.strip().split(' ')[0], x.strip().split(' ')[1]) for x in detail_list if x != ''])
+        except IndexError:
+            print detail_list
+            continue
+        try:
+            geneid = re.search("(Cbir[A-Za-z0-9_\(\)\.\/]*)", details['nearest_ref'])
+        except KeyError:
+            geneid = re.search("(Cbir[A-Za-z0-9_\(\)\.\/]*)", details['oId'])
+
+        if geneid is not None and details['class_code'][1:-1] in ("=","c","j"):
+            locus[details['gene_id'][1:-1]] = geneid.group(1)
+        elif details['class_code'][1:-1] in ("=","c","j", "o"):
+            locus[details['gene_id'][1:-1]] = details['gene_id']
+        elif details['class_code'][1:-1] in ("x","i","u"):
+            locus[details['gene_id'][1:-1]] = 'Cbir_' + str(new_cbir)
+            new_cbir += 1
+        else:
+            print details['class_code'],details['gene_id'],geneid.group(1),'###',
+    return locus
+
+def rename_loci(gtffile, bedfile):
+    "transforms bedfile XLOC gene ids, replacing them with existing or new Cbir ids."
+    locus = assign_cbir(gtffile)
+    oldbed = open(bedfile, 'rb')
+    newbed = open(bedfile[:-3] + 'cbir.bed', 'w')
+
+    for line in oldbed:
+        oldid = re.search(';(XLOC_[0-9]*)[^;]*;', line)
+        if oldid is not None:
+            try:
+                newid = locus[oldid.group(1)]
+            except KeyError:
+                newid = oldid.group(0)[1:-1]
+            oldname = oldid.group(0)
+        else:
+            newid = ""
+            oldname = "notfoundatall"
+        newline = line.replace(oldname, ';' + newid + ';')
+        newbed.write(newline)
+
+    oldbed.close()
+    newbed.close()
+
+
+
 def strip_duplicates(bedfile):
     "removes duplicate gene entries, and replacing ID with the cufflinks appended Cbir ID"
     bed_h = open(bedfile, 'rb')
     newbed_h = open(bedfile[:-3] + "uniq.bed", 'w')
+    reject_h = open(bedfile[:-3] + "reject.bed", 'w')
+    genedic = {}
+
     for line in bed_h:
         fields = line.split()
-        if fields[12] == ".":
-            newbed_h.write("\t".join(fields[:12]) + "\n")
-            continue
-        cbirID = re.search("Cbir", fields[15])
-        if cbirID is not None:
-            newbed_h.write("\t".join(fields[12:]) + "\n")
+        # check that gene is not already annotated:
+        if (tuple(fields[0:3]),tuple(fields[5:])) in genedic:
+            reject_h.write(line)
+        else:
+            newbed_h.write(line)
+            genedic[(tuple(fields[0:3]),tuple(fields[5:]))] = True
+
     bed_h.close()
     newbed_h.close()
+    reject_h.close()
 
 def parse_names(genelist, gffobj):
     "takes a gene ID or list of gene IDs and returns the gene name from the gff file"
@@ -808,9 +899,11 @@ def reinstate_cbir(cuffcompare_gtf):
             details = dict([(x.strip().split(' ')[0], x.strip().split(' ')[1]) for x in detail_list if x != ''])
         except IndexError:
             print detail_list
-            die
-
-        geneid = re.search("(Cbir[A-Za-z0-9_\(\)\.\/]*)", details['nearest_ref'])
+            continue
+        try:
+            geneid = re.search("(Cbir[A-Za-z0-9_\(\)\.\/]*)", details['nearest_ref'])
+        except KeyError:
+            geneid = re.search("(Cbir[A-Za-z0-9_\(\)\.\/]*)", details['oId'])
 
         if geneid is not None and details['class_code'] == "=":
             details['transcript_id'] = '"%s.%s"' % (details['gene_id'].strip('"'),geneid.group(1))
