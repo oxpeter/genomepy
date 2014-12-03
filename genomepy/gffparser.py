@@ -311,10 +311,10 @@ class My_gff(object):
         if self.inexon(posn, locus):
             closest_distance = 999999999999
             for start, end in self.exondict[geneid]:
-                if posn - start < closest_distance:
-                    closest_distance =  posn - start
-                if end - posn < closest_distance:
-                    closest_distance =  end - posn
+                if abs(posn - start) < closest_distance:
+                    closest_distance =  abs(posn - start)
+                if abs(end - posn) < closest_distance:
+                    closest_distance =  abs(end - posn)
         return closest_distance
 
     def findnearest(self, scaffold, hitpos):

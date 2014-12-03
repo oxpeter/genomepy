@@ -266,11 +266,12 @@ def blast_results(blast_results, num_results=10):
         if counter == 0:
             break
 
-def extractseq(geneID, type='pep', OGS=dbpaths['goterms'][:-4], startpos=0, endpos=-1):
+def extractseq(geneID, type='pep', OGS=dbpaths['cds'][:-4], startpos=0, endpos=-1):
     """ extracts sequence of geneID from the current annotations. type is cds,  pep or fasta.
     """
+    fname = dbpaths[type]
     geneseq = ""
-    fname = ".".join([OGS, type])
+    #fname = ".".join([OGS, type])
     fobj = open(fname)
     for line in fobj:
         query = re.search('>(lcl.)?([A-Za-z_\.0-9]*)', line)
