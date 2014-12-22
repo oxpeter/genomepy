@@ -354,6 +354,34 @@ class My_gff(object):
 
 ##### FILE MANIPULATION #####
 
+def verbalise(arg1, *args):
+    """
+    Verbalise replaces the print function, allowing specification of one of six colors
+    for the terminal output. To specify color, simply add a string of one of
+    R,G,Y,B,M or C as the first argument. Color of the text will revert to default
+    after the verbalise string is printed (so you can use the regular print statement
+    and not get unpredictable colors).
+    """
+    # define escape code: '\x1b[31m  %s  \x1b[0m'
+    colordict = {'R':'\x1b[31m', 'G':'\x1b[32m',
+         'Y':'\x1b[33m' ,'B':'\x1b[34m', 'M':'\x1b[35m' , 'C':'\x1b[36m' }
+    if arg1 in colordict:
+        argstring = " ".join([str(arg) for arg in args])
+        if sys.stdout.isatty():
+            color_code = colordict[arg1]
+            end_color = '\x1b[0m'
+        else:
+            color_code = ""
+            end_color = ""
+    else:
+        argstring = " ".join([arg1] + [arg for arg in args])
+        color_code = ""
+        end_color = ""
+
+    print "%s%s%s" % (color_code, argstring, end_color)
+
+
+
 def pickle_jar(obj, fname):
     pklfile = ".".join([fname, 'pkl'])
     apicklefile = open(pklfile, 'wb')
@@ -1290,7 +1318,7 @@ def separate_cuffjoined(gtf_file, dblid):
     print count
     return newfile
 
-def make_a_list(geneobj, col_num=0):
+def make_a_list(geneobj, col_num=0, readfile=True):
     """given a path, list, dictionary or string, convert into a list of genes.
     col_num specifies the column from which to extract the gene list from."""
 
@@ -1305,15 +1333,23 @@ def make_a_list(geneobj, col_num=0):
         if re.search("/",geneobj) is None:
             genelist = {}.fromkeys(geneobj.split(','),1)
         else:   # is a file path
-            genefile_h = open(geneobj, 'rb')
-            genelist = {}   # will be a dict of names { 'Cbir01255':1, 'CbirVgq':1, ... }
-                            # used a dictionary to automatically remove any name duplications
-            filegen = [ line.split() for line in genefile_h ]
+            if re.search(",",geneobj) or not readfile: # can turn of so that a single file path is returned as the string
+                genelist = {}.fromkeys(geneobj.split(','),1)
+            else:
+                genefile_h = open(geneobj, 'rb')
+                genelist = {}   # will be a dict of names { 'Cbir01255':1, 'CbirVgq':1, ... }
+                                # used a dictionary to automatically remove any name duplications
+                filegen = [ line.split() for line in genefile_h if len(line) > 0]
 
-            genefile_h.close()
+                genefile_h.close()
 
-            for colset in filegen:
-                genelist[colset[col_num]]=1
+                for colset in filegen:
+                    try:
+                        genelist[colset[col_num]]=1
+                    except IndexError:
+                        verbalise("R", "Column %d not found in %s" % (col_num, str(colset)))
+    else:
+        genelist = {}
 
     return genelist
 

@@ -385,7 +385,7 @@ def go_enrichment(genelist):
             len(go_obj.fetch_genes(goterm)) - dip, go_obj.count_genes() - len(go_obj.fetch_genes(goterm)) - len(genelist) + dip,
             oddrat, pval)
         goodds[goterm]   = oddrat
-        gopval[goterm]  = pval
+        gopval[goterm]  = pval, go_obj.define_go(goterm)[1], go_obj.define_go(goterm)[0]
 
     ## Fisher's Exact Test:
     #               Has GOterm:                             Doesn't Have GOterm:                                                            SUM:

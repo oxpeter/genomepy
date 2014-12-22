@@ -17,7 +17,7 @@ def get_genelist(input_file):
     genelist = [line.split()[0] for line in open(input_file)]
     return genelist
 
-def check_PCR(primer1, primer2, pcr_name="C_biroi", outputfile="~/tempfile"):
+def check_PCR(primer1, primer2, gffobj, pcr_name="C_biroi", outputfile="~/tempfile", id_thresh=16, gap_thresh=1):
     """creates pseudo PCR product from primers, and blasts C.biroi to look for multiple
     PCR products."""
     primer1_seq = Seq(primer1, generic_dna)
@@ -26,7 +26,15 @@ def check_PCR(primer1, primer2, pcr_name="C_biroi", outputfile="~/tempfile"):
 
     # blast C. biroi genome with PCR_product:
     outfile = outputfile + ".blastout.tmp"
-    cris.blastseq(PCR_product, seqnames=pcr_name, outpath=outfile, outfmt='tab')
+    cris.blastseq(PCR_product, seqnames=pcr_name, outpath=outfile, outfmt='crisprtab')
+    blast_dict = cris.parse_crispr_blast(
+                        outfile,
+                        gffobj,
+                        id_thresh=id_thresh,
+                        gap_thresh=gap_thresh,
+                        shownearest=True
+                        )
+    cris.report_results(outfile + 'final_results.info', blast_dict)
 
 def parse_p3(input_file):
     p3_h = open(input_file, 'rb')
@@ -155,7 +163,7 @@ def main(args):
         #print "Processing primer pair for %s" % (name)
         # blast primer pair:
         blastout = args.output_file + ".".join(["", name, primer1, 'blastn'])
-        check_PCR(primer1, primer2, pcr_name=name, outputfile=blastout)
+        check_PCR(primer1, primer2, pcr_name=name, outputfile=blastout, gffobj=quickinfo)
 
         ## check blastn output for viable PCR products:
         #hitnumber, hitseq = cris.showblast(filename=blastout + ".blastout.tmp", \

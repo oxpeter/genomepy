@@ -50,12 +50,46 @@
 # input:
 # directory of .fastq files with numbered samples denoted by *SX*.fastq (the default output from an Illumina MiSeq instrument)
 
-import sys,re,csv,glob,os
+import sys, re, csv, glob, os
+import time, datetime # this is for determining how long the run will take
 import argparse
 
 import pysam
 
 from genomepy import genematch
+
+def verbalise(arg1, *args):
+    """
+    Verbalise replaces the print function, allowing specification of one of six colors
+    for the terminal output. To specify color, simply add a string of one of
+    R,G,Y,B,M or C as the first argument. Color of the text will revert to default
+    after the verbalise string is printed (so you can use the regular print statement
+    and not get unpredictable colors).
+    """
+    # define escape code: '\x1b[31m  %s  \x1b[0m'
+    colordict = {'R':'\x1b[31m', 'G':'\x1b[32m',
+         'Y':'\x1b[33m' ,'B':'\x1b[34m', 'M':'\x1b[35m' , 'C':'\x1b[36m' }
+    if arg1 in colordict:
+        argstring = " ".join([str(arg) for arg in args])
+        if sys.stdout.isatty():
+            color_code = colordict[arg1]
+            end_color = '\x1b[0m'
+        else:
+            color_code = ""
+            end_color = ""
+    else:
+        argstring = " ".join([arg1] + [arg for arg in args])
+        color_code = ""
+        end_color = ""
+
+    print "%s%s%s" % (color_code, argstring, end_color)
+
+def verbal_system(arg_str):
+    "Runs os.system, checks return value, and only prints something if value is not 0"
+    r_val = os.system(arg_str)
+    if r_val != 0:
+        verbalise("R", arg_str, "did not work! Error:", r_val)
+    return r_val
 
 def build_index(gen_ref, idx_path, idx_name):
     cmd_line = "gmap_build -d " + idx_name + " -D " + idx_path + " " + gen_ref
@@ -104,24 +138,33 @@ def read_input(in_file):
 def align_reads(lanes, readfiles, idx_path, idx_name, out_dir, fq_dir):
     "Use gsnap to align fastq reads to indexed reference genome"
     # cycle through each of the samples
-    for lane in lanes:
-        print "\n##### Running lane %s #####\n" % ( lane )
+    cycles = len(lanes)
+    t0 = time.time() # returns current time in seconds.
+
+    for i, lane in enumerate(lanes):
+        verbalise("M", "\n##### Running lane %s #####" % ( lane ))
         fileprefix = '/'.join([out_dir , lane])
 
         # this will be the file name of the bam file created
         bamFile= '.'.join([fileprefix,'sorted.bam']);
-        print "BamFile = ", bamFile
+        verbalise("B", "BamFile = ", bamFile)
 
         # this finds all of the .fastq files associated with the sample number
-        fq_path = fq_dir + '/*' + lane + '_*.fastq'
+        fq_path = fq_dir + '/*' + lane + '*.fastq'
         reads = glob.glob(fq_path)
-        # gsnap only works on unzipped files. Therefore need to check files are .fastq:
 
+        # gsnap only works on unzipped files. Therefore need to check files are .fastq:
         for read in reads[:]:
             if re.search("gz$", read) is not None:
-                os.system('gunzip ' + read)
-                reads = glob.glob(fq_path)
+                verbal_system('gunzip -v ' + read)
 
+        # reset the files (which should now all be .fastq):
+        fq_path = fq_dir + '/*' + lane + '*.fastq'
+        reads = glob.glob(fq_path)
+
+        if len(reads) == 0:
+            verbalise("R", "No fastq files found for this id. Skipping.")
+            continue
 
         # first, let's align the reads with gsnap - set to allow indels of +/- 250bp
         # http://research-pub.gene.com/gmap/
@@ -133,13 +176,22 @@ def align_reads(lanes, readfiles, idx_path, idx_name, out_dir, fq_dir):
         print os.system('cat ' + " ".join(reads) + ' | gsnap -t 4 -y 250 -z 250 -A sam -D ' + idx_path + ' -d ' + idx_name + ' --input-buffer-size 10000 --sam-multiple-primaries > ' + fileprefix + '.sam')
 
         # convert from .sam file to .bam file
-        print os.system('samtools view -b -S ' + fileprefix + '.sam > ' + fileprefix + '.bam')
+        verbal_system('samtools view -b -S ' + fileprefix + '.sam > ' + fileprefix + '.bam')
 
         # sort .bam file
-        print os.system('samtools sort ' + fileprefix + '.bam ' + fileprefix + '.sorted')
+        verbal_system('samtools sort ' + fileprefix + '.bam ' + fileprefix + '.sorted')
 
         # index bam file
-        print os.system('samtools index ' + fileprefix + '.sorted.bam')
+        verbal_system('samtools index ' + fileprefix + '.sorted.bam')
+
+        # calculate remaining time:
+        j = i + 1
+        t1 = time.time()
+        t_taken = t1 - t0
+        t_rate = t_taken / j
+        t_remaining = datetime.timedelta(seconds=( (cycles - j) * t_rate ))
+        verbalise("Y", "Sample %d of %d completed. Time remaining: %s" % (j, cycles, t_remaining))
+
 
 def cigar_stats(bamFile, scaffold, startpos, endpos):
         # use the pysam package to open the .bam.indel file for writing data on the proportion
@@ -169,9 +221,9 @@ def cigar_stats(bamFile, scaffold, startpos, endpos):
                             out_file.write(",".join(['d', str(-1*cigarLength), scaffold + '\n']));
 
                     except:
-                        print("Problem");
+                        verbalise("R", "Problem!");
 
-        print "%-15s: %d" %  (scaffold, c0count)
+        verbalise("Y", "%-15s: %d" %  (scaffold, c0count))
         out_file.close()
 
 def alignment_stats(lanes, readfiles, out_dir, gen_ref, pos_stats):
@@ -185,8 +237,8 @@ def alignment_stats(lanes, readfiles, out_dir, gen_ref, pos_stats):
 
         bamFile= '.'.join([fileprefix,'sorted.bam']);
         # use pysamstats to count the number of reads at each bp that have aligned with an insertion or deletion
-        print os.system('pysamstats --type variation ' + fileprefix + '.sorted.bam --fasta ' + gen_ref + '>' + fileprefix + '.variant.stats')
-        print "Read depths for %s:"  % (lane)
+        verbal_system('pysamstats --type variation ' + fileprefix + '.sorted.bam --fasta ' + gen_ref + '>' + fileprefix + '.variant.stats')
+        verbalise("M", "Read depths for %s:"  % (lane))
         for scaffold in pos_stats:
             cigar_stats(bamFile, scaffold, pos_stats[scaffold][0], pos_stats[scaffold][1])
 
