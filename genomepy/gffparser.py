@@ -20,6 +20,7 @@ import progressbar              # from Nilton Volpato
 import gff2bed2
 from genomepy import genematch
 from genomepy import config
+from genomepy.config import verbalise, pickle_jar, open_pickle_jar, pickle_gtypes, unpickle_gtypes
 
 ###### INITIALISE THE FILE PATHS NEEDED FOR ANALYSIS #######################
 
@@ -351,112 +352,6 @@ class My_gff(object):
             return "Not_found"
 
 ####### FUNCTIONS ############################################################
-
-##### FILE MANIPULATION #####
-
-def verbalise(arg1, *args):
-    """
-    Verbalise replaces the print function, allowing specification of one of six colors
-    for the terminal output. To specify color, simply add a string of one of
-    R,G,Y,B,M or C as the first argument. Color of the text will revert to default
-    after the verbalise string is printed (so you can use the regular print statement
-    and not get unpredictable colors).
-    """
-    # define escape code: '\x1b[31m  %s  \x1b[0m'
-    colordict = {'R':'\x1b[31m', 'G':'\x1b[32m',
-         'Y':'\x1b[33m' ,'B':'\x1b[34m', 'M':'\x1b[35m' , 'C':'\x1b[36m' }
-    if arg1 in colordict:
-        argstring = " ".join([str(arg) for arg in args])
-        if sys.stdout.isatty():
-            color_code = colordict[arg1]
-            end_color = '\x1b[0m'
-        else:
-            color_code = ""
-            end_color = ""
-    else:
-        argstring = " ".join([arg1] + [arg for arg in args])
-        color_code = ""
-        end_color = ""
-
-    print "%s%s%s" % (color_code, argstring, end_color)
-
-
-
-def pickle_jar(obj, fname):
-    pklfile = ".".join([fname, 'pkl'])
-    apicklefile = open(pklfile, 'wb')
-    cPickle.dump(obj, apicklefile, -1)
-    apicklefile.close()
-
-def open_pickle_jar(fname):
-    pklfile = ".".join([fname, 'pkl'])
-    apicklefile = open(pklfile, 'rb')
-    loaded_obj = cPickle.load(apicklefile)
-    apicklefile.close()
-    return loaded_obj
-
-def pickle_gtypes(lineage_gtypes, indiv_gtypes, fname='pickle'):
-    # try to pickle the gtypes!
-    pklfile = ".".join([fname, 'aGtypes.pkl'])
-    apicklefile = open(pklfile, 'wb')
-    cPickle.dump(lineage_gtypes, apicklefile, -1)
-    apicklefile.close()
-
-    pklfile = ".".join([fname, 'iGtypes.pkl'])
-    ipicklefile = open(pklfile, 'wb')
-    cPickle.dump(indiv_gtypes, ipicklefile, -1)
-    ipicklefile.close()
-
-def unpickle_gtypes(fname='pickle'):
-    # and now to unpickle!
-    pklfile = ".".join([fname, 'aGtypes.pkl'])
-    apicklefile = open(pklfile, 'rb')
-    lineage_gtypes = cPickle.load(apicklefile)
-    apicklefile.close()
-
-    pklfile = ".".join([fname, 'iGtypes.pkl'])
-    ipicklefile = open(pklfile, 'rb')
-    indiv_gtypes = cPickle.load(ipicklefile)
-    ipicklefile.close()
-
-    return lineage_gtypes, indiv_gtypes
-
-def file_block(filehandle,  block, number_of_blocks=1000):
-    """
-    This code adapted from:
-    http://xor0110.wordpress.com/2013/04/13/how-to-read-a-chunk-of-lines-from-a-file-in-python/
-
-    Written by Nic Werneck
-
-    A generator that splits a file into blocks and iterates
-    over the lines of one of the blocks.
-
-    usage:
-    filehandle = open(filename)
-    number_of_chunks = 100
-    for chunk_number in range(number_of_chunks):
-        for line in file_block(filehandle, number_of_chunks, chunk_number):
-            process(line)
-    """
-
-
-    assert 0 <= block and block < number_of_blocks
-    assert 0 < number_of_blocks
-
-    filehandle.seek(0,2)
-    file_size = filehandle.tell()
-
-    ini = file_size * block / number_of_blocks
-    end = file_size * (1 + block) / number_of_blocks
-
-    if ini <= 0:
-        filehandle.seek(0)
-    else:
-        filehandle.seek(ini-1)
-        filehandle.readline()
-
-    while filehandle.tell() < end:
-        yield filehandle.readline()
 
 
 ##### GFF FILE MANIPULATION #####
@@ -1318,40 +1213,6 @@ def separate_cuffjoined(gtf_file, dblid):
     print count
     return newfile
 
-def make_a_list(geneobj, col_num=0, readfile=True):
-    """given a path, list, dictionary or string, convert into a list of genes.
-    col_num specifies the column from which to extract the gene list from."""
-
-    # genefile can be given as a list of genes (say, from find_degs()... ), or as
-    # a path to a file containing a list of genes.
-    # The following builds a dictionary of genes from either input:
-    if type(geneobj) is list:   # allows filtering from hicluster generated list of results.
-        genelist = {}.fromkeys(geneobj,1)
-    elif type(geneobj) is dict:
-        genelist = geneobj # this of course will only work if the keys are the genes!
-    elif type(geneobj) is str:   # assuming a filepath...
-        if re.search("/",geneobj) is None:
-            genelist = {}.fromkeys(geneobj.split(','),1)
-        else:   # is a file path
-            if re.search(",",geneobj) or not readfile: # can turn of so that a single file path is returned as the string
-                genelist = {}.fromkeys(geneobj.split(','),1)
-            else:
-                genefile_h = open(geneobj, 'rb')
-                genelist = {}   # will be a dict of names { 'Cbir01255':1, 'CbirVgq':1, ... }
-                                # used a dictionary to automatically remove any name duplications
-                filegen = [ line.split() for line in genefile_h if len(line) > 0]
-
-                genefile_h.close()
-
-                for colset in filegen:
-                    try:
-                        genelist[colset[col_num]]=1
-                    except IndexError:
-                        verbalise("R", "Column %d not found in %s" % (col_num, str(colset)))
-    else:
-        genelist = {}
-
-    return genelist
 
 
 
@@ -1364,7 +1225,7 @@ def investigate(args, doblast=True):
     print "assembing my gff"
     mygff = My_gff(args.gff_file)
 
-    genelist = make_a_list(args.input_file)
+    genelist = config.make_a_list(args.input_file)
 
     reportfile_h = open(args.output_file, 'w')
 
