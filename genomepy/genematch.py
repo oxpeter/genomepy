@@ -346,7 +346,7 @@ def extract_promoter():
 def go_finder(genelist):
     pass
 
-def go_enrichment(genelist):
+def go_enrichment(genelist, return_odds=False):
     go_obj = GO_maker()
 
     god = {}
@@ -364,16 +364,21 @@ def go_enrichment(genelist):
         if goterm == "GO:######":
             continue
         dip = god[goterm]
+
+        go_w_deg = dip
+        go_wo_deg = len(go_obj.fetch_genes(goterm)) - dip
+        nogo_w_deg = len(genelist) - dip
+        nogo_wo_deg = go_obj.count_genes() - len(go_obj.fetch_genes(goterm)) - len(genelist) + dip
+
         try:
             oddrat, pval = fisher_exact([
-                [dip, len(genelist) - dip],
-                [len(go_obj.fetch_genes(goterm)) - dip, go_obj.count_genes()
-                        - len(go_obj.fetch_genes(goterm)) - len(genelist) + dip
-                ]
+                [go_w_deg, nogo_w_deg],
+                [go_wo_deg, nogo_wo_deg]
             ], alternative='greater')
         except ValueError:
             oddrat = 0.0
             pval =  1.0
+
         if dip > 1 and pval < 0.05 and True:
             print "%s (%s) %s\n          \
             Has GO  Doesn't Have Go\n\
@@ -381,20 +386,16 @@ def go_enrichment(genelist):
             non-DEG:  %-7d %d\n\
             odds-ratio: %.3f\n\
             P-value: %.3f\n" % (goterm, go_obj.define_go(goterm)[1], go_obj.define_go(goterm)[0],
-            dip, len(genelist) - dip,
-            len(go_obj.fetch_genes(goterm)) - dip, go_obj.count_genes() - len(go_obj.fetch_genes(goterm)) - len(genelist) + dip,
-            oddrat, pval)
-        goodds[goterm]   = oddrat
+                                go_w_deg, nogo_w_deg,
+                                go_wo_deg, nogo_wo_deg,
+                                oddrat, pval)
+        goodds[goterm]   = go_w_deg, nogo_w_deg,go_wo_deg, nogo_wo_deg, oddrat, pval, go_obj.define_go(goterm)[1], go_obj.define_go(goterm)[0]
         gopval[goterm]  = pval, go_obj.define_go(goterm)[1], go_obj.define_go(goterm)[0]
 
-    ## Fisher's Exact Test:
-    #               Has GOterm:                             Doesn't Have GOterm:                                                            SUM:
-    #   DEG     :   dip                                     len(genelist) - dip                                                             len(genelist) --> but assumes all genes have all GO terms known!
-    #   non-DEG :   len(go_obj.fetch_genes(goterm)) - dip   go_obj.count_genes() - len(go_obj.fetch_genes(goterm)) - len(genelist) + dip    go_obj.count_genes() - len(genelist)
-    #   SUM     :   len(go_obj.fetch_genes(goterm))         go_obj.count_genes() - len(go_obj.fetch_genes(goterm))                          go_obj.count_genes()
-    #
-
-    return gopval
+    if return_odds:
+        return goodds
+    else:
+        return gopval
 
 def cbir_to_kegg(genelist, dbpaths=dbpaths, reversedic=False):
     "Converts Cbir gene IDs to Kegg orthologs (KOs)"
