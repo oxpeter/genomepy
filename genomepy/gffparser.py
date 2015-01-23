@@ -209,6 +209,7 @@ class My_gff(object):
         self.geneids = {}
         self.genescaf = {}
         self.exondict = {}
+        self.strandinfo = {}
 
         gff_h = open(gff_file,'rb')
         for line in gff_h:
@@ -218,6 +219,10 @@ class My_gff(object):
                 start = min(int(line.split()[3]), int(line.split()[4]))
                 stop = max(int(line.split()[3]), int(line.split()[4]))
                 geneid = re.search('ID=([^;]*)', line.split('\t')[8]).groups()[0]
+                if line.split()[6] == "+":
+                    self.strandinfo[geneid] = 1
+                else:
+                    self.strandinfo[geneid] = -1
                 self.genescaf[geneid] = scaf
                 try:
                     genename = re.search('Name=([^;]*);', line.split('\t')[8]).groups()[0]
@@ -260,6 +265,9 @@ class My_gff(object):
 
     def whichscaf(self, geneid):
         return self.genescaf[geneid]
+
+    def whichstrand(self, geneid):
+        return self.strandinfo[geneid]
 
     def gene(self, locus):
         scaf, posn = locus
