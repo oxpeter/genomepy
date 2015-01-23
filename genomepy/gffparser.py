@@ -263,11 +263,42 @@ class My_gff(object):
     def __len__(self):
         return (self.genecount)
 
-    def whichscaf(self, geneid):
-        return self.genescaf[geneid]
+    def whichscaf(self, geneid, exact=True):
+        try:
+            scaf = self.genescaf[geneid]
+        except KeyError:
+            if exact:
+                scaf = None
+            else:
+                allgenes = ( gene for scaf in self.genedict for gene in self.genedict[scaf] )
+                matches = []
+                for gene in allgenes:
+                    if re.search(geneid, gene):
+                        matches.append(geneid)
+                if len(matches) == 1:
+                    scaf = self.genescaf(matches[0])
+                else:
+                    strand = None
 
-    def whichstrand(self, geneid):
-        return self.strandinfo[geneid]
+        return scaf
+
+    def whichstrand(self, geneid, exact=True):
+        try:
+            strand = self.strandinfo[geneid]
+        except KeyError:
+            if exact:
+                strand = None
+            else:
+                allgenes = ( gene for scaf in self.genedict for gene in self.genedict[scaf] )
+                matches = []
+                for gene in allgenes:
+                    if re.search(geneid, gene):
+                        matches.append(geneid)
+                if len(matches) == 1:
+                    strand = self.strandinfo(matches[0])
+                else:
+                    strand = None
+        return strand
 
     def gene(self, locus):
         scaf, posn = locus
