@@ -213,6 +213,8 @@ class My_gff(object):
 
         gff_h = open(gff_file,'rb')
         for line in gff_h:
+            if line[0] == "#":  # ignore all comment lines:
+                continue
             if line.split()[2] == 'mRNA':
                 self.genecount += 1
                 scaf = line.split()[0]
@@ -274,9 +276,9 @@ class My_gff(object):
                 matches = []
                 for gene in allgenes:
                     if re.search(geneid, gene):
-                        matches.append(geneid)
+                        matches.append(gene)
                 if len(matches) == 1:
-                    scaf = self.genescaf(matches[0])
+                    scaf = self.genescaf[matches[0]]
                 else:
                     strand = None
 
@@ -293,9 +295,9 @@ class My_gff(object):
                 matches = []
                 for gene in allgenes:
                     if re.search(geneid, gene):
-                        matches.append(geneid)
+                        matches.append(gene)
                 if len(matches) == 1:
-                    strand = self.strandinfo(matches[0])
+                    strand = self.strandinfo[matches[0]]
                 else:
                     strand = None
         return strand
