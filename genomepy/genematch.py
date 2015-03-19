@@ -274,19 +274,19 @@ def extractseq(geneID, type='pep', OGS=dbpaths['cds'][:-4], startpos=0, endpos=-
     #fname = ".".join([OGS, type])
     fobj = open(fname)
     for line in fobj:
-        query = re.search('>(lcl.)?([A-Za-z_\.0-9]*)', line)
-        if query != None:
-            if query.groups()[1] == geneID:
-                thisline = fobj.next()
+        if line[0] == '>':
+            query = re.search( geneID + '[\s\n]', line)
+        if query:
+            thisline = fobj.next()
 
-                while re.search('>', thisline) == None:
-                    geneseq += thisline.strip()
-                    try:
-                        thisline = fobj.next()
-                    except StopIteration:
-                        break
-                else:
+            while thisline[0] != '>':
+                geneseq += thisline.strip()
+                try:
+                    thisline = fobj.next()
+                except StopIteration:
                     break
+            else:
+                break
     fobj.close()
     return geneseq[startpos:endpos]
 
