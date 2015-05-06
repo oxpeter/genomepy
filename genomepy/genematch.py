@@ -100,6 +100,8 @@ def extract_locus(fname, col_num, datacol=False):
 
     if datacol is provided, the contents of that column will be added to the extra list:
     gdata
+
+    designed for use with cufflinks output files.
     """
     scaf = []
     gbeg = []
