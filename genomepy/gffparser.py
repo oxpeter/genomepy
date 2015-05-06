@@ -5,6 +5,7 @@ import sys
 import cPickle
 import re
 import os
+import datetime
 
 import argparse
 from BCBio import GFF
@@ -15,12 +16,11 @@ from Bio.SeqFeature import SeqFeature, FeatureLocation
 #from reportlab.lib import colors
 #from reportlab.lib.units import cm
 from Bio.Graphics import GenomeDiagram
-import progressbar              # from Nilton Volpato
 
 import gff2bed2
 from genomepy import genematch
 from genomepy import config
-from genomepy.config import verbalise, pickle_jar, open_pickle_jar, pickle_gtypes, unpickle_gtypes
+from genomepy.config import pickle_jar, open_pickle_jar, pickle_gtypes, unpickle_gtypes
 
 ###### INITIALISE THE FILE PATHS NEEDED FOR ANALYSIS #######################
 
@@ -306,9 +306,9 @@ class My_gff(object):
         scaf, posn = locus
         ingene = False
         try:
-            for gene in self.genedict[scaf]:
-                if self.genedict[scaf][gene][0] <= posn <= self.genedict[scaf][gene][1]:
-                    ingene = gene
+            for geneid in self.genedict[scaf]:
+                if self.genedict[scaf][geneid][0] <= posn <= self.genedict[scaf][geneid][1]:
+                    ingene = geneid
         except KeyError:
             ingene = None
 
@@ -680,8 +680,6 @@ def highest_cbir(file=dbpaths['pep']):
 
     return highest
 
-
-
 def assign_cbir(gtffile):
     """Takes cuffcompare gtf file and extracts XLOC id along with Cbir id.
 
@@ -737,8 +735,6 @@ def rename_loci(gtffile, bedfile):
 
     oldbed.close()
     newbed.close()
-
-
 
 def strip_duplicates(bedfile):
     "removes duplicate gene entries, and replacing ID with the cufflinks appended Cbir ID"
@@ -904,7 +900,6 @@ def show_features(gff_dict, scaf):
 def gene_info(gff_dict, geneid):
     'returns salient features of a given gene'
 
-
 def snp_in_gene(scaf, pos, gff_dict):
     """returns salient features of a given SNP.
 
@@ -919,15 +914,27 @@ def snp_in_gene(scaf, pos, gff_dict):
     codon = the nt sequence of the codon the SNP is on
     frame = the position the SNP is in within the codon (position 1,2 or 3)
     ref_nt = the nucleotide in the reference assembly at the SNP position
+
+    NB: there can be multiple genes sharing the same locus, (usually by being on
+    different strands), so each gene needs to be tested (which will slow performance,
+    sadly).
     """
 
-
+    SNP_dict = {"gene_id":None, "gene_name":None, "cds_pos":None,
+                    "codon":None, 'codon_str':None, "frame":None,
+                    "ref_nt":None, 'ref_nt_str':None, "exon":None}
 
     for feat in gff_dict[scaf].features:
         if pos in feat:
 
             # print gene details for match:
             #print feat.qualifiers['ID'][0],
+
+            if 'pseudo' in feat.qualifiers:
+                continue
+
+            if 'partial' in feat.qualifiers:
+                continue
             try:
                 gene_name = feat.qualifiers['Name'][0]
             except KeyError:
@@ -954,7 +961,20 @@ def snp_in_gene(scaf, pos, gff_dict):
                     before_len += len(subfeat.location)
                     before_cnt += 1
 
-            cds_pos = exon_pos + before_len
+            try:
+                cds_pos = exon_pos + before_len
+            except UnboundLocalError:
+                """
+                verbalise("R", "ERROR for ", gene_name, gene_id)
+                verbalise("M", before_len, before_cnt)
+                verbalise("Y", pos)
+                verbalise("G", feat.location)
+                verbalise("R", dir(feat))
+
+                verbalise("G", [ str(sf.location) for sf in feat.sub_features ])
+                verbalise("R", feat.sub_features)
+                """
+                return SNP_dict
             frame =  {1:1,2:2,0:3}[cds_pos % 3]
             seq_start = cds_pos - frame
             seq_end = seq_start + 3
@@ -973,14 +993,16 @@ def snp_in_gene(scaf, pos, gff_dict):
                 ref_nt = rec_seq[pos:pos+1].reverse_complement()
                 #print "Codon: %s\t Codon Position: %d\t Ref. nt: %s\t" % (codon, frame, ref_nt)
             #print "SNP lies", feat.location.end - pos + 1, "from the start of the gene (including introns)."
-            SNP_dict = {"gene_id":gene_id, "gene_name":gene_name, "cds_pos":cds_pos, "exon":exon, "codon":codon, 'codon_str':str(codon), "frame":frame, "ref_nt":ref_nt, 'ref_nt_str':str(ref_nt)}
+            SNP_dict['gene_id']=(gene_id)
+            SNP_dict['gene_name']=(gene_name)
+            SNP_dict['cds_pos']=(cds_pos)
+            SNP_dict['exon']=(exon)
+            SNP_dict['codon']=(codon)
+            SNP_dict['codon_str']=(str(codon))
+            SNP_dict['frame']=(frame)
+            SNP_dict['ref_nt']=(ref_nt)
+            SNP_dict['ref_nt_str']=(str(ref_nt))
             break
-    else:
-        SNP_dict = {"gene_id":None, "gene_name":None, "cds_pos":None, "exon":None, "codon":None, 'codon_str':None, "frame":None, "ref_nt":None, 'ref_nt_str':None}
-        # It may be necessary to report -ve results in the future. Perhaps something like:
-        #else:
-        #    SNP_dict[feat] = (None, None, None, None, None)
-
     return SNP_dict
 
 def get_sequence(scaf, gff_dict, feature):
@@ -1067,7 +1089,6 @@ def draw_gene(feature):
 
     gd_diagram.draw(format='linear', orientation='landscape', pagesize='A4', fragments=1, start=0, end=len(feature))
     gd_diagram.write("test_gene.img.pdf", "PDF")
-
 
 def test(dbpaths):
     """ The basic commands I have been running of '__main__'
@@ -1312,7 +1333,7 @@ def methylation_analysis(args):
 
     print "assembling intronchecker..."
     intronchecker = My_gff(args.gff_file)
-    print "Intron checker gff created:", intronchecker
+    verbalise("Y", "Intron checker gff created:", intronchecker)
 
     print "assembling go monster..."
     go_monster = genematch.GO_maker(args.GO_file)
@@ -1322,16 +1343,19 @@ def methylation_analysis(args):
     out_h.close()
 
     # collect details of immensity of task before you:
-    cmd = "wc " + args.input_file + " > results.tmp"
-    os.system(cmd)
-    size = open("result.tmp", 'rb').readline().split()[0]
-    print "There are %d lines to be processed (approx %d hours)." % (size, size/1000000)
-    os.system("rm result.tmp")
-    # setup progress bar
-    bar = progressbar.ProgressBar(maxval=size, \
-    widgets=[progressbar.Bar('=', '[', ']'), ' ', progressbar.ETA()])
-    count=0
+    cmd = "wc " + args.input_file
 
+    wc = os.popen(cmd)
+    data = wc.readline()
+    wc.close()
+    size = int( data.split()[0] )
+    verbalise("Y",
+        "There are %d lines to be processed (approx %d hours)." % (size, size/1000000)
+            )
+
+
+    count=0
+    t0 = datetime.datetime.now()
 
     print "extracting SNP information"
     deg_h = open(args.input_file, 'rb')
@@ -1339,68 +1363,117 @@ def methylation_analysis(args):
     deg_h.next()
     for line in deg_h:
         count += 1
-        bar.update(count)
+        if count % 10000 == 0:
+            t1 = datetime.datetime.now()
+            tdiff = datetime.timedelta.total_seconds(t1-t0)
+            speed = 1.0 * count / tdiff  # (counts/s)
+            remaining = size - count
+            tremaining = datetime.timedelta(seconds=remaining / speed)
+            print "\r%d/%d complete. Time remaining ~ %s            " % (count,size,tremaining),
+            sys.stdout.flush()
         scaf = line.split()[1]
         posn = int(line.split()[2])
-        strand = line.split()[3]
-        coverage = line.split()[4]
-        freqC = line.split()[5]
-        freqT = line.split()[6]
-
+        #strand = line.split()[3]
+        #coverage = line.split()[4]
+        #freqC = line.split()[5]
+        #freqT = line.split()[6]
+        strand=""
+        coverage=""
+        freqC=""
+        freqT=""
 
         SNPdict = snp_in_gene(scaf, posn, gffobj)
-        # SNP_dict = {"gene_id":None, "gene_name":None, "cds_pos":None, "exon":None, "codon":None, 'codon_str':None, "frame":None, "ref_nt":None, 'ref_nt_str':None}
-        if SNPdict["gene_id"] is not None:
+        # SNP_dict = {"gene_id":None, "gene_name":None, "cds_pos":None,
+        #             "exon":None,    "codon":None,     "codon_str":None,
+        #             "frame":None,   "ref_nt":None,    "ref_nt_str":None}
+
+        if SNPdict["gene_name"]:
             scaf = line.split()[1]
             posn = int(line.split()[2])
-            genegos = go_monster.findem(SNPdict["gene_id"])  # was... parse_go(SNPdict["gene_id"])
-            # genegos = {"GO:######":("GO function","GO definition")}
+            if args.show_go:
+                genegos = go_monster.findem(SNPdict["gene_name"])
+                # This was... parse_go(SNPdict["gene_id"])
+                # genegos = {"GO:######":("GO function","GO definition")}
 
             out_h = open(args.output_file, 'a')
-            out_h.write( "%-20s %-10d %-4s %-6s %-8s %-8s" % (scaf,posn,strand,coverage,freqC,freqT) \
-                + " %(gene_id)-15s %(exon)-4d %(cds_pos)-7d %(codon_str)-5s " % (SNPdict) \
-                + "   ".join([ g + " " + genegos[g][1] + " " + genegos[g][0] for g in genegos ]) + "\n" )
+            snp_details ="%-20s %-10d %-4s %-6s %-8s %-8s" % (scaf,posn,strand,coverage,freqC,freqT)
+            gene_details= " %(gene_name)-15s %(exon)-4d %(cds_pos)-7d %(codon_str)-5s " % (SNPdict)
+            if args.show_go:
+                go_details="   ".join([g + " " + genegos[g][1] + " " + genegos[g][0] for g in genegos])
+            else:
+                go_details=""
+
+            out_h.write(snp_details +  gene_details + go_details + "\n")
             out_h.close()
+
         else:
             # find out if SNP is in an intron:
             ingene = intronchecker.gene((scaf, posn))
-            #print "%r" % (ingene)
             if ingene: # ie, SNP lies on an intron of a gene
-                genegos = go_monster.findem(SNPdict["gene_id"])
+                if args.show_go:
+                    genegos = go_monster.findem(SNPdict["gene_name"])
+                genename = intronchecker.nameit(ingene)
+                snp_details="%-20s %-10d %-4s %-6s %-8s %-8s" % (scaf,posn,strand,coverage,freqC,freqT)
+                gene_details=" %-15s %-4d %-7s %-5s " % (genename, 0, 'n/a', 'n/a' )
+                if args.show_go:
+                    go_details="   ".join([g+" "+genegos[g][1]+" "+genegos[g][0] for g in genegos])
+                else:
+                    go_details=""
+
                 out_h = open(args.output_file, 'a')
-                out_h.write( "%-20s %-10d %-4s %-6s %-8s %-8s" % (scaf,posn,strand,coverage,freqC,freqT) \
-                    + " %-15s %-4d %-7s %-5s " % (ingene, 0, 'n/a', 'n/a' ) \
-                    + "   ".join([ g + " " + genegos[g][1] + " " + genegos[g][0] for g in genegos ]) + "\n" )
+                out_h.write(snp_details +  gene_details + go_details + "\n")
                 out_h.close()
+
             else:
+                snp_details="%-20s %-10d %-4s %-6s %-8s %-8s" % (scaf,posn,strand,coverage,freqC,freqT)
+                gene_details=" %-17s %-4d %-7s %-5s" % ("Intergenic", -1, 'n/a', 'n/a' )
+
                 out_h = open(args.output_file, 'a')
-                out_h.write( "%-20s %-10d %-4s %-6s %-8s %-8s" % (scaf,posn,strand,coverage,freqC,freqT) \
-                    + " %-17s %-4d %-7s %-5s \n" % ("Intergenic", -1, 'n/a', 'n/a' ) )
+                out_h.write( snp_details + gene_details + "\n" )
                 out_h.close()
+
     else:
         sys.stdout.write("%d lines processed.\n" % (count) )
         sys.stdout.flush()
-    bar.finish()
 
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description="Various GFF and gene-file manipulations")
-    parser.add_argument("-o", "--output_file", type=str, default="output.list", help="File to save results to")
-    parser.add_argument("-i", "--input_file", type=str,  help="File to analyse")
-    parser.add_argument("-g", "--gff_file", type=str, default=dbpaths['lclgff'], help="GFF file for analyses")
-    parser.add_argument("-f", "--genome_file", type=str, default=dbpaths['assgi'], help="Genome fasta file for analyses")
-    parser.add_argument("-G", "--GO_file", type=str, default=dbpaths['goterms'], help="GO file for analyses")
-    parser.add_argument("-I", "--investigate", action='store_true',  help="analyse a list of genes")
-    parser.add_argument("-b", "--blastoff", action='store_true',  help="turns off blast search for investigate option")
-    parser.add_argument("-m", "--methylation", action='store_true',  help="perform methylation analysis")
-    parser.add_argument("-S", "--splicing", type=str,  help="perform alternate splicing analysis on given file")
-    parser.add_argument("-B", "--bed2gtf", type=str, help="converts from bed to both ex.gff and gtf formats")
-    parser.add_argument("-t", "--trim", type=str,  help="trims UTRs from gff file")
-    parser.add_argument("-s", "--strip", type=str, help="removes duplicate transcripts from bed file")
+    parser.add_argument("-d", "--directory", type=str,
+                        help="specify the directory to save results to")
+    parser.add_argument("-o", "--output_file", type=str, default="output.list",
+                        help="File to save results to")
+    parser.add_argument("-i", "--input_file", type=str,
+                        help="File to analyse")
+    parser.add_argument("-g", "--gff_file", type=str, default=dbpaths['lclgff'],
+                        help="GFF file for analyses")
+    parser.add_argument("-f", "--genome_file", type=str, default=dbpaths['assgi'],
+                        help="Genome fasta file for analyses")
+    parser.add_argument("-G", "--GO_file", type=str, default=dbpaths['goterms'],
+                        help="GO file for analyses")
+    parser.add_argument("--show_go", action='store_true', default=False,
+                        help="run GO analyses")
+    parser.add_argument("-I", "--investigate", action='store_true',
+                        help="analyse a list of genes")
+    parser.add_argument("-b", "--blastoff", action='store_true',
+                        help="turns off blast search for investigate option")
+    parser.add_argument("-M", "--methylation", action='store_true',
+                        help="perform methylation analysis")
+    parser.add_argument("-S", "--splicing", type=str,
+                        help="perform alternate splicing analysis on given file")
+    parser.add_argument("-B", "--bed2gtf", type=str,
+                        help="converts from bed to both ex.gff and gtf formats")
+    parser.add_argument("-t", "--trim", type=str,
+                        help="trims UTRs from gff file")
+    parser.add_argument("-s", "--strip", type=str,
+                        help="removes duplicate transcripts from bed file")
+    parser.add_argument("-q", "--quiet", action='store_true', default=False,
+                        help="turn of reporting")
 
     args = parser.parse_args()
 
-
+    verbalise = config.check_verbose(not(args.quiet))
+    logfile = config.create_log(args, outdir=args.directory, outname=args.output_file)
 
     if args.investigate:
         investigate(args, doblast=not(args.blastoff))
