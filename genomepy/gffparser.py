@@ -1369,7 +1369,7 @@ def methylation_analysis(args):
             speed = 1.0 * count / tdiff  # (counts/s)
             remaining = size - count
             tremaining = datetime.timedelta(seconds=remaining / speed)
-            print "\r%d/%d complete. Time remaining ~ %s            " % (count,size,tremaining),
+            print "\r%d/%d (%.2f%%) complete. Time remaining ~ %s            " % (count,size, 100.0*count/size, tremaining),
             sys.stdout.flush()
         scaf = line.split()[1]
         posn = int(line.split()[2])
