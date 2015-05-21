@@ -11,6 +11,8 @@ access.
 import os, sys
 import re
 import time
+import cPickle
+
 from subprocess import Popen, PIPE
 from operator import itemgetter
 from pkg_resources import resource_filename, resource_exists
@@ -46,6 +48,9 @@ def check_verbose(v=True):
     return verbalise
 
 def read_pathways(config_file):
+    """
+    Extract the pathways of the filetypes specified in the config file.
+    """
     pathway_dict = {}
     config_h = open( config_file, 'rb')
     # split each line into two (variable and path), if no comment symbol # is present:
