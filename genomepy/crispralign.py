@@ -56,33 +56,9 @@ import argparse
 
 import pysam
 
-from genomepy import genematch
+from genomepy import genematch, config
 
-def verbalise(arg1, *args):
-    """
-    Verbalise replaces the print function, allowing specification of one of six colors
-    for the terminal output. To specify color, simply add a string of one of
-    R,G,Y,B,M or C as the first argument. Color of the text will revert to default
-    after the verbalise string is printed (so you can use the regular print statement
-    and not get unpredictable colors).
-    """
-    # define escape code: '\x1b[31m  %s  \x1b[0m'
-    colordict = {'R':'\x1b[31m', 'G':'\x1b[32m',
-         'Y':'\x1b[33m' ,'B':'\x1b[34m', 'M':'\x1b[35m' , 'C':'\x1b[36m' }
-    if arg1 in colordict:
-        argstring = " ".join([str(arg) for arg in args])
-        if sys.stdout.isatty():
-            color_code = colordict[arg1]
-            end_color = '\x1b[0m'
-        else:
-            color_code = ""
-            end_color = ""
-    else:
-        argstring = " ".join([arg1] + [arg for arg in args])
-        color_code = ""
-        end_color = ""
-
-    print "%s%s%s" % (color_code, argstring, end_color)
+verbalise = config.verbalise
 
 def verbal_system(arg_str):
     "Runs os.system, checks return value, and only prints something if value is not 0"
@@ -191,7 +167,6 @@ def align_reads(lanes, readfiles, idx_path, idx_name, out_dir, fq_dir):
         t_rate = t_taken / j
         t_remaining = datetime.timedelta(seconds=( (cycles - j) * t_rate ))
         verbalise("Y", "Sample %d of %d completed. Time remaining: %s" % (j, cycles, t_remaining))
-
 
 def cigar_stats(bamFile, scaffold, startpos, endpos):
         # use the pysam package to open the .bam.indel file for writing data on the proportion
