@@ -3,9 +3,10 @@
 """ A series of functions allowing interaction between local gff/cds/pep/fa files and
 Tuxedo suite result files and ncbi's BLAST engines
 """
-
+import os
 import sys
 import re
+import argparse
 
 import Bio.Blast.NCBIWWW as ncbi
 import Bio.Blast.NCBIXML as xml
@@ -30,24 +31,36 @@ class GO_maker(object):
         self.go_defs = {}
 
         go_handle = open(gofile, 'rb')
-        columns = [ line.split('\t') for line in go_handle ]
-        for columnset in columns:
-            self.go_dict[columnset[0]] = {}
-            for element in columnset[2:]:
-                gopattern = "GO:([0-9]*)"
-                defpattern = "\; ([-A-Za-z ]*)\; ([A-Za-z ]*)"
-                rego = re.search(gopattern, element)    # ie the GO number GO:001432
-                defgo = re.search(defpattern, element)  # the type and definition of the go term
-                if rego is not None and defgo is not None:
-                    # parse GO term into type (eg Molecular Process) and definition (eg Redox Reaction)
+        #columns = [ line.split('\t') for line in go_handle ]
+        #for columnset in columns:
+        for line in go_handle:
+            #columnset = line.split('\s')
+            gene = line.split()[0]
+            self.go_dict[gene] = {}
+            patt = "GO:([0-9]+);?(\s(?!GO:)[\w; ]+)?"
+            go_pairs = re.findall(patt, line)
+            for pair in go_pairs:
+                goterm = pair[0] # ie the GO number GO:001432
+                defpattern = " ([-A-Za-z ]*)\; ([A-Za-z ]*)"
+                defgo = re.search(defpattern, pair[1])  # the type and definition of the go term
+                if len(goterm)>0 and defgo:
+                    # parse GO term into type (eg Molecular Process)
+                    # and definition (eg Redox Reaction)
                     gotype = defgo.group(2).split()[0][0] + defgo.group(2).split()[1][0]
                     godef =  defgo.group(1)
-                    self.go_dict[columnset[0]][rego.group()] =  (godef, gotype)
-                    try:
-                        self.go_repo[rego.group()].append(columnset[0])
-                    except KeyError:
-                        self.go_repo[rego.group()] = [columnset[0]]
-                    self.go_defs[rego.group()] = (godef, gotype)
+                    self.go_dict[gene][goterm] =  (godef, gotype)
+                    if goterm in self.go_repo:
+                        self.go_repo[goterm].append(gene)
+                    else:
+                        self.go_repo[goterm] = [gene]
+                    self.go_defs[goterm] = (godef, gotype)
+                elif len(goterm)>0:
+                    self.go_dict[gene][goterm] =  ("-unavailable-", "-unavailable-")
+                    if goterm in self.go_repo:
+                        self.go_repo[goterm].append(gene)
+                    else:
+                        self.go_repo[goterm] = [gene]
+                    self.go_defs[goterm] = ("-unavailable-", "-unavailable-")
 
     def count_goterms(self):
         "returns the number of unique go terms stored in object"
@@ -91,6 +104,32 @@ class GO_maker(object):
             return ("GO not found","GO not found")
 
 ############################################
+def define_arguments():
+    parser = argparse.ArgumentParser(description=
+            "A module to perform a variety of gene term related analyses")
+
+    ### input options ###
+    # logging options:
+    parser.add_argument("-q", "--quiet", action='store_true',default=False,
+                        help="print fewer messages and output details")
+    parser.add_argument("-o", "--output", type=str, default='lorf2.out',
+                        help="specify the filename to save results to")
+    parser.add_argument("-d", "--directory", type=str,
+                        help="specify the directory to save results to")
+
+    # data file options:
+    parser.add_argument("-i", "--input", type=str,
+                        help="file to analyse")
+    parser.add_argument("-c", "--column", type=int, default=0,
+                        help="column to extract data from")
+    parser.add_argument("-f", "--datafile", type=str,
+                        help="file containing gene terms")
+
+    # analysis options:
+    parser.add_argument("-E", "--enrichment", action='store_true',default=False,
+                        help="perform GO term enrichment on file")
+
+    return parser
 
 def extract_locus(fname, col_num, datacol=False):
     """ given a file name and a column number, extract_locus() will create three lists:
@@ -271,9 +310,9 @@ def blast_results(blast_results, num_results=10):
 def extractseq(geneID, type='pep', OGS=dbpaths['cds'][:-4], startpos=0, endpos=-1):
     """ extracts sequence of geneID from the current annotations. type is cds,  pep or fasta.
     """
-    fname = dbpaths[type]
+    #fname = dbpaths[type]
     geneseq = ""
-    #fname = ".".join([OGS, type])
+    fname = ".".join([OGS, type])
     fobj = open(fname)
     for line in fobj:
         if line[0] == '>':
@@ -348,8 +387,8 @@ def extract_promoter():
 def go_finder(genelist):
     pass
 
-def go_enrichment(genelist, return_odds=False):
-    go_obj = GO_maker()
+def go_enrichment(genelist, return_odds=False, gofile=dbpaths['goterms']):
+    go_obj = GO_maker(gofile)
 
     god = {}
     goodds = {}
@@ -716,8 +755,6 @@ def kegg_pathway_enrichment(degs, negs, dbpaths=dbpaths, show_all=True, pthresh=
 
     return pathwaytype_ps, pathway_ps
 
-
-
 def collect_kegg_pathways(minsize=0, filename=dbpaths['keggpathways']):
     """
     output: smallrefined_dict = { pathwayname:[list of Cbir_genes] }
@@ -825,6 +862,8 @@ def cbir_ncbi(geneobj, dbpaths=dbpaths):
             gene_gi[geneobj] = 'no NCBI item'
     return gene_gi
 
+
+
 ########################################################################
 def mainprog():
     cmmd, fname  = sys.argv
@@ -850,14 +889,15 @@ def mainprog():
     crispr_h.close()
 
 if __name__ == '__main__':
+    parser = define_arguments()
+    args = parser.parse_args()
 
-    #cmmd, fname, scaf, startpos, endpos  = sys.argv
+    verbalise = config.check_verbose(not(args.quiet))
+    logfile = config.create_log(args, outdir=args.directory, outname=args.output)
 
-    orco  = ["scaffold520", 276743, 276870]
-    itr   = ["scaffold50", 1377329, 1377469]
-    site1 = ["scaffold197", 1420598, 1420746]
-    genelist = [orco, itr, site1]
-
-    for site in genelist:
-        sequence = extractseq(site[0], type='fa', OGS=dbpaths['ass'][:-3], startpos=site[1]-1000, endpos=site[2]+1000)
-        print ">%s\n%s\n" % (site[0], sequence)
+    if args.enrichment:
+        verbalise("B",
+             "performing GO enrichment on file %s using GO file %s" % (os.path.basename(args.input), os.path.basename(args.datafile)))
+        geneset = config.make_a_list(args.input, col_num=args.column)
+        pvalues = go_enrichment(geneset, return_odds=False, gofile=args.datafile)
+        verbalise("G", "\n".join([str(p) for p in pvalues.items() if p[1][0] <= 0.05]))
