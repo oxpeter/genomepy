@@ -8,11 +8,14 @@ import sys
 import re
 import argparse
 
+import numpy as np
 import Bio.Blast.NCBIWWW as ncbi
 import Bio.Blast.NCBIXML as xml
 from Bio.Seq import Seq
 from Bio.Alphabet import generic_dna, IUPAC
 from scipy.stats import fisher_exact
+from scipy import interpolate
+import matplotlib.pyplot as plt
 
 from genomepy import config
 
@@ -21,20 +24,62 @@ from genomepy import config
 dbpaths = config.import_paths()
 
 ############################################
+class GO_item(object):
+    "holds the relevant data about a GO term"
+    def __init__(self, id, name, namespace, alt_id=[], definition="", subsets=[], synonym=""):
+
+        self.id = self.process_goid(id)
+
+        self.name = name
+
+        # check namespace is appropriate to one of the three categories:
+        if namespace.upper() in ["MOLECULAR_FUNCTION","MOLECULAR FUNCTION", "MF"]:
+            self.namespace = "MF"
+        elif namespace.upper() in ["BIOLOGICAL_PROCESS","BIOLOGICAL PROCESS", "BP"]:
+            self.namespace = "BP"
+        elif namespace.upper() in ["CELLULAR_COMPONENT","CELLULAR COMPONENT", "CL"]:
+            self.namespace = "CL"
+
+        self.altids = [self.process_goid(a) for a in alt_id]
+
+        self.definition = definition
+        self.subsets = subsets
+
+        if isinstance(synonym, list):
+            self.synonym = synonym
+        else:
+            self.synonym = [synonym]
+
+    def __str__(self):
+        return "GO:%s [%s] '%s'" % (self.id, self.namespace, self.name)
+
+    __repr__ = __str__
+
+    def process_goid(self, id):
+        if id[:3] == "GO:":
+            try:
+                b = int(id[3:])
+            except ValueError:
+                verbalise("R", "GO term must be numeric! ('GO:' prefix allowed)")
+            return id[3:]
+
+        else:
+            try:
+                b = int(id)
+            except ValueError:
+                verbalise("R", "GO term must be numeric! ('GO:' prefix allowed)")
+            return id
 
 class GO_maker(object):
     "an object for quick access to all GO terms for a gene set"
     def __init__(self, gofile=dbpaths['goterms']):
-        # gofile was '/Volumes/antqueen/genomics/experiments/analyses/BGI20120208_Genome/Gene_Ontology/Cerapachys_biroi.CE.GO.gene.list'
+
         self.go_repo = {}
         self.go_dict = {}
         self.go_defs = {}
 
         go_handle = open(gofile, 'rb')
-        #columns = [ line.split('\t') for line in go_handle ]
-        #for columnset in columns:
         for line in go_handle:
-            #columnset = line.split('\s')
             gene = line.split()[0]
             self.go_dict[gene] = {}
             patt = "GO:([0-9]+);?(\s(?!GO:)[\w; ]+)?"
@@ -103,6 +148,54 @@ class GO_maker(object):
         except KeyError:
             return ("GO not found","GO not found")
 
+class Fisher_square(object):
+    def __init__(self, TwG, TwoG, NwG, NwoG, id, id_info=None):
+        self.TwG  = int(TwG)  # Number of Target Genes with GO terms
+        self.TwoG = int(TwoG) # Number of Target Genes without GO terms
+        self.NwG  = int(NwG)  # Number of Non-Target genes with GO terms
+        self.NwoG = int(NwoG) # Number of Non-Target genes without GO terms
+
+        self.id = id
+        self.id_info = id_info  # with idea that this contains GO_item instance
+
+        self.p = None
+        self.odds = None
+
+    def __str__(self):
+        # create label:
+        if self.id_info:
+            header = "%s\n" % (self.id_info)
+        else:
+            header = "%s\n" % (self.id)
+
+        # create results lines:
+        if self.p and self.odds:
+            results = "%20s %.3f\n%20s %.3f\n" %   ("odds-ratio:", self.odds,
+                                "P-value:", self.p)
+        else:
+            results = "No tests performed\n"
+
+        # create table of values:
+        body = "%-22s %s\n%20s %-7d %d\n%20s %-7d %d\n" % ("Has GO", "Doesn't Have GO",
+                                "Target Set:", self.TwG, self.TwoG,
+                                "Non-Target Set:", self.NwG, self.NwoG,
+                                )
+
+        fullstring = header + body + results
+        return fullstring
+
+    __repr__ = __str__
+
+    def fisher_test(self, alt='greater'):
+        try:
+            self.odds, self.p = fisher_exact([
+                [self.TwG, self.TwoG],
+                [self.NwG, self.NwoG]
+            ], alternative=alt)
+        except ValueError:
+            verbalise("R", "Error performing Fishers Exact:", self)
+
+
 ############################################
 def define_arguments():
     parser = argparse.ArgumentParser(description=
@@ -124,12 +217,77 @@ def define_arguments():
                         help="column to extract data from")
     parser.add_argument("-f", "--datafile", type=str,
                         help="file containing gene terms")
+    parser.add_argument("-g", "--gofile", type=str,
+                        help=".obo file containing go terms,definitions etc")
 
     # analysis options:
     parser.add_argument("-E", "--enrichment", action='store_true',default=False,
                         help="perform GO term enrichment on file")
+    parser.add_argument("-T", "--min_terms", type=int, default=2,
+                        help="the minimum number of terms to report in enrichment results")
+    parser.add_argument("-Q", "--max_q", type=int, default=0.05,
+                        help="the maximum q_value to report in enrichment results")
+
 
     return parser
+
+def set_go_item(attributes):
+    if set(['id', 'name', 'namespace', 'def']) <= set(attributes.keys()):
+        go_item = GO_item(  attributes['id'],
+                            attributes['name'],
+                            attributes['namespace'],
+                            attributes['alt_id'],
+                            attributes['def'],
+                            attributes['subset'],
+                            attributes['synonym'],
+                        )
+    else:
+        verbalise("R", "CANNOT BUILD GO ITEM. INSUFFICIENT ATTRIBUTES:\n", " ".join([str(p) for p in attributes.keys()]))
+        return None
+    return go_item
+
+def reset_attributes():
+    return {'alt_id':[], 'subset':[],
+            'synonym':[], 'subsetdef':[],
+            'is_a':[], 'consider':[],
+            'xref':[], 'intersection_of':[],
+            'relationship':[], 'replaced_by':[],
+            'disjoint_from':[], 'subsetdef':[],
+            }
+
+def build_go_terms(file):
+    """
+    This function takes the given OBO file from the Gene Ontology Consortium and
+    parses it into a series of dictionaries containing GO_item instances.
+    """
+    id_dic = {}
+
+    handle = open(file, 'rb')
+    attributes = reset_attributes()
+    for line in handle:
+        posn = line.find(":")
+        if posn > 0:
+            if line[:posn] in attributes:
+                try:
+                    attributes[line[:posn]].append(line.strip()[posn+2:])
+                except AttributeError:
+                    verbalise("R", "CANNOT APPEND TERM FROM LINE:", line)
+                    verbalise("R", "\n".join([str(p) for p in attributes.items()]))
+                    exit()
+            else:
+                attributes[line[:posn]] = line.strip()[posn+2:]
+        elif line[:2] == "[T":
+            go_item = set_go_item(attributes)
+            if go_item:
+                id_dic[go_item.id] = go_item
+            attributes = reset_attributes()
+    else:
+        go_item = set_go_item(attributes)
+        if go_item:
+            id_dic[go_item.id] = go_item
+
+    handle.close()
+    return id_dic
 
 def extract_locus(fname, col_num, datacol=False):
     """ given a file name and a column number, extract_locus() will create three lists:
@@ -387,8 +545,17 @@ def extract_promoter():
 def go_finder(genelist):
     pass
 
-def go_enrichment(genelist, return_odds=False, gofile=dbpaths['goterms']):
-    go_obj = GO_maker(gofile)
+def go_enrichment(genelist, background_go=None, go_info=None, return_odds=False, gofile=dbpaths['goterms']):
+    """
+    returns f_squares = [fisher_square1, fisher_square2...]
+    """
+    # if background list of GO terms is not supplied, make one:
+    if background_go:
+        go_obj = background_go
+    else:
+        go_obj = GO_maker(gofile)
+
+    f_squares = []  # where the Fisher's Exact Tables will be held (and returned)
 
     god = {}
     goodds = {}
@@ -411,32 +578,16 @@ def go_enrichment(genelist, return_odds=False, gofile=dbpaths['goterms']):
         nogo_w_deg = len(genelist) - dip
         nogo_wo_deg = go_obj.count_genes() - len(go_obj.fetch_genes(goterm)) - len(genelist) + dip
 
-        try:
-            oddrat, pval = fisher_exact([
-                [go_w_deg, nogo_w_deg],
-                [go_wo_deg, nogo_wo_deg]
-            ], alternative='greater')
-        except ValueError:
-            oddrat = 0.0
-            pval =  1.0
+        if isinstance(go_info,dict):
+            f_squares.append(Fisher_square(go_w_deg, nogo_w_deg, go_wo_deg, nogo_wo_deg, goterm, go_info[goterm]))
+        else:
+            f_squares.append(Fisher_square(go_w_deg, nogo_w_deg, go_wo_deg, nogo_wo_deg, goterm))
 
-        if dip > 1 and pval < 0.05 and True:
-            print "%s (%s) %s\n          \
-            Has GO  Doesn't Have Go\n\
-            DEG    :  %-7d %d\n\
-            non-DEG:  %-7d %d\n\
-            odds-ratio: %.3f\n\
-            P-value: %.3f\n" % (goterm, go_obj.define_go(goterm)[1], go_obj.define_go(goterm)[0],
-                                go_w_deg, nogo_w_deg,
-                                go_wo_deg, nogo_wo_deg,
-                                oddrat, pval)
-        goodds[goterm]   = go_w_deg, nogo_w_deg,go_wo_deg, nogo_wo_deg, oddrat, pval, go_obj.define_go(goterm)[1], go_obj.define_go(goterm)[0]
-        gopval[goterm]  = pval, go_obj.define_go(goterm)[1], go_obj.define_go(goterm)[0]
+    verbalise("B", "Performing Fisher's Exact Test on %d squares" % (len(f_squares)))
+    for square in f_squares:
+        square.fisher_test()
 
-    if return_odds:
-        return goodds
-    else:
-        return gopval
+    return f_squares
 
 def cbir_to_kegg(genelist, dbpaths=dbpaths, reversedic=False):
     "Converts Cbir gene IDs to Kegg orthologs (KOs)"
@@ -862,6 +1013,80 @@ def cbir_ncbi(geneobj, dbpaths=dbpaths):
             gene_gi[geneobj] = 'no NCBI item'
     return gene_gi
 
+######## Statistical Functions #########################################
+def p_to_q(pvalues, display_on=False, cut1s=False, set_pi_hat=False):
+    """
+    Given the list of pvalues, convert to pFDR q-values.
+    According to Storey and Tibshirani (2003) PNAS 100(16) : 9440
+
+    returns: { p-value:q-value }
+
+    """
+    # because fisher's exact test gives highly skewed pvalue dists (with P of 1)
+    # it may be necessary to remove the 1s before analysing
+    if cut1s:
+        pvalues = [ps for ps in pvalues if ps < 1]
+
+    # order p-values:
+    pvalues.sort()
+
+    # estimate pi0:
+    # evaluate pi0 across the range of lambda:
+    lamrange = np.arange(0,0.95,0.01)
+    #pbeaters = [ sum( p > lam for p in pvalues) for lam in lamrange ]
+    #denominator = [ (len(pvalues) * (1 - lam)) for lam in lamrange ]
+    pi0_lam = [ (sum( p > lam for p in pvalues) / (len(pvalues) * (1 - lam))) for lam in lamrange ]
+    #pi0_hardway = []
+
+    #for i in range(len(pbeaters)):
+    #    pi0_hardway += [ pbeaters[i] / denominator[i] ]
+    #if pi0_lam != pi0_hardway:
+    #    print "\n\n\npi0_lam is not the same as pi0_hardway!\n\n"
+    #print "pi0_hardway length:", len(pi0_hardway)
+    #print "p_values size:", len(pvalues)
+    # fit cubic spline to data, then calculate value of pi0 for lambda = 1:
+    tck = interpolate.splrep(lamrange, pi0_lam, s=3)
+    splinecurve = interpolate.splev(np.arange(0,1.0,0.01), tck, der=0)
+    pi0_hat = interpolate.splev(1, tck, der=0)
+    tck_half = 0
+    if pi0_hat > 1:
+        tck_half = interpolate.splrep(lamrange[:85], pi0_lam[:85], s=3)
+        spline_half = interpolate.splev(np.arange(0,1.0,0.01), tck_half, der=0)
+        pi0_hat_half = interpolate.splev(1, tck_half, der=0)
+        pi0_hat = pi0_hat_half
+        verbalise("R", "pi0_hat > 1! Likely skewed P-value distribution. Converting to ", pi0_hat_half)
+    if set_pi_hat:
+        pi0_hat = set_pi_hat
+    if display_on:
+        fig = plt.figure()
+        ax1 = fig.add_subplot(111)
+        try:
+            n, bins, patches = ax1.hist(pvalues, bins=20, facecolor='green', label="P-values")
+        except IndexError:
+            ax1.plot(pvalues)
+        plt.title('distribution of P-values')
+        ax1.set_xlabel('lambda / P-value')
+        ax1.set_ylabel('distribution #')
+        plt.legend(loc=4)
+        ax2 = ax1.twinx()
+        ax2.plot(lamrange, pi0_lam, 'ro', np.arange(0,1.0,0.01), splinecurve, 'r', label='pi0_hat, s=3' )
+        if tck_half != 0:
+            ax2.plot(lamrange[:95], spline_half[:95], 'b', label='lambda < 0.85')
+        ax2.set_ylabel('pi0_hat(lambda)')
+        #ax1.plot(t, s1, 'b-')
+        plt.legend(loc=1)
+        plt.show()
+
+
+    q_pm =  pi0_hat * pvalues[-1]    #  q(pm)
+    # creates an ordered list of q(p(i)) values.
+    q_pi_list = [q_pm] + [ (pi0_hat * len(pvalues)*pvalues[i])/i for i in range(len(pvalues)-1,1,-1)]
+    # "The estimated q value for the ith most significant feature is q(p(i))"
+    q_val = {}
+    for i in range(len(pvalues)):
+        q_val[pvalues[-1 * (i+1)]] = min(q_pi_list[:i+1])
+
+    return q_val
 
 
 ########################################################################
@@ -896,8 +1121,33 @@ if __name__ == '__main__':
     logfile = config.create_log(args, outdir=args.directory, outname=args.output)
 
     if args.enrichment:
+        verbalise("B", "Parsing GO terms")
+        id_dic = build_go_terms(args.gofile)
+        verbalise("G", [str(p) for p in id_dic.items()][:5])
         verbalise("B",
              "performing GO enrichment on file %s using GO file %s" % (os.path.basename(args.input), os.path.basename(args.datafile)))
+
+        # perform Fisher's Exact Test for enrichment of GO terms:
         geneset = config.make_a_list(args.input, col_num=args.column)
-        pvalues = go_enrichment(geneset, return_odds=False, gofile=args.datafile)
-        verbalise("G", "\n".join([str(p) for p in pvalues.items() if p[1][0] <= 0.05]))
+        f_squares = go_enrichment(geneset, go_info=id_dic, return_odds=False, gofile=args.datafile)
+        p_list = [p.p for p in f_squares]
+        q_dic = p_to_q(p_list, display_on=True, cut1s=False, set_pi_hat=False)
+
+        # prepare result strings:
+        header = "Significantly enriched GO terms (Q-value <= 0.05)\n"
+        resultstring = "\n".join([str(s) for s in f_squares if s.TwG >= args.min_terms and q_dic[s.p] <= args.max_q])
+        resultlist = "\n".join(sorted([str(s.id_info) for s in f_squares if s.TwG >= args.min_terms and q_dic[s.p] <= args.max_q], key=lambda x: x[13]))
+        #resultstring = "\n".join(sorted([str(id_dic[p[0]]) for p in pvalues.items() if q_dic[p[1][0]] <= 0.05 ], key=lambda x: x[1]))
+
+        # output to screen:
+        verbalise("M", header)
+        verbalise(resultstring)
+        verbalise("G", resultlist)
+
+        # output to file:
+        outfile = open(logfile[:-3] + "out", 'w')
+        outfile.write(header)
+        outfile.write(resultlist)
+        outfile.write("\n\nFisher's Exact Test results for enriched GO terms:\n")
+        outfile.write(resultstring)
+        outfile.close()
