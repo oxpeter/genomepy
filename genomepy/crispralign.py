@@ -35,7 +35,7 @@
 #   -r GEN_REF, --genome_ref GEN_REF
 #                         Specify the fasta file of the genome to use for stats.
 #                         (Default = mini_genome.fa)
-#   -o OUT_DIR, --output_dir OUT_DIR
+#   -o OUT_DIR, --directory OUT_DIR
 #                         Specify an output directory. (Default = current
 #                         working directory)
 #   -B, --build_idx       Build the genome index file from specified fasta file
@@ -58,7 +58,48 @@ import pysam
 
 from genomepy import genematch, config
 
-verbalise = config.verbalise
+
+def define_arguments():
+    # CLI parser to get variables that are more likely to change run to run:
+    parser = argparse.ArgumentParser(description="Process fastq files for CRISPR analysis.\nCurrently works very well using defaults, requiring only the input file and path to fastq files. Ie:\ncrispralign.py -BRs -i <input_file> <fastq_dir>")
+
+    ### input options ###
+    # logging options:
+    parser.add_argument("-q", "--quiet", action='store_true',default=False,
+                        help="print fewer messages and output details")
+    parser.add_argument("-f", "--output", type=str, default='lorf2.out',
+                        help="specify the filename to save results to")
+    parser.add_argument("--directory", type=str, default=os.getcwd(),
+                        help="specify the directory to save results to")
+
+
+    parser.add_argument("-D", "--index_path", type=str, dest="idx_path",
+                        default="./genome_idx",
+                        help="Specify the reference genome index path.\n(Default = /Volumes/Genome/CRISPR/genome_idx)")
+    parser.add_argument("-d", "--index_file", type=str, dest="idx_name",
+                        default="mini_genome",
+                        help="Specify the reference genome index name.\n(Default = 'mini_genome')")
+    parser.add_argument("-r", "--genome_ref", type=str, dest="gen_ref",
+                        default="./mini_genome.fa",
+                        help="Specify the fasta file of the genome to use for stats.\n(Default = mini_genome.fa)")
+
+    parser.add_argument("fastq_dir", type=str, nargs=1,
+                        help="The directory containing all the fastq files for analysis.")
+    parser.add_argument("-i", "--input_file",  type=str, dest="in_file", default=False,
+                        help="Specify an input file with site positions.\n(Format: scaffold    start    stop)")
+                        parser.add_argument("-b", "--buffer",  type=int, default=1000,
+                        help="Specify the buffer (in bp) when building genome_ref")
+    parser.add_argument("-B", "--build_idx", action="store_true",
+                        help="Build the genome index file from specified fasta file")
+    parser.add_argument("-R", "--build_ref", action="store_true",
+                        help="Build the reference genome fasta file (will overwrite existing genome_ref)")
+    parser.add_argument("-s", "--align_stats", action="store_true",
+                        help="perform additional statistical analyses")
+    parser.add_argument("-a", "--skip_alignment", action="store_true",
+                        help="turns off read alignment")
+
+    return parser
+
 
 def verbal_system(arg_str):
     "Runs os.system, checks return value, and only prints something if value is not 0"
@@ -72,15 +113,18 @@ def build_index(gen_ref, idx_path, idx_name):
     print "Running: ", cmd_line
     print os.system(cmd_line)
 
-def build_reference(gen_ref, pos_stats):
+def build_reference(gen_ref, pos_stats, buffer=1000):
 
+    scaf_lengths = {}
     ref_h = open(gen_ref, 'w')
     # extract sequences from reference genome (identified under OGS):
+    # adds a buffer of 1000bp to either end
     for scaffold in pos_stats:
-        sequence = genematch.extractseq(scaffold, type='fa', OGS='/Volumes/antqueen/genomics/genomes/C.biroi/Cbir.assembly.v3.0', startpos=pos_stats[scaffold][0]-1000, endpos=pos_stats[scaffold][1]+1000)
+        sequence = genematch.extractseq(scaffold, type='fa', OGS='/Volumes/antqueen/genomics/genomes/C.biroi/Cbir.assembly.v3.0', startpos=pos_stats[scaffold][0]-buffer, endpos=pos_stats[scaffold][1]+buffer)
         ref_h.write( ">%s\n%s\n" % (scaffold, sequence) )
-
+        scaf_lengths[scaf] = len(sequence)
     ref_h.close()
+    return scaf_lengths
 
 def read_input(in_file):
     """Reads scaffolds and positions of each site to be analysed, as well as the files from the
@@ -106,7 +150,11 @@ def read_input(in_file):
             continue
         else:
             print line
-            gene_pos[line.split()[0]] = (int(line.split()[1]), int(line.split()[2]))
+            gene_pos[line.split()[0]] = (min([ int(x) for x in line.split()[1:] ]),
+                                        max([ int(x) for x in line.split()[1:] ])
+                                         )
+            # WARNING: will not be able to have multiple sites in the same scaffold this way!
+
     in_file_h.close()
 
     return gene_pos, lanes
@@ -201,7 +249,7 @@ def cigar_stats(bamFile, scaffold, startpos, endpos):
         verbalise("Y", "%-15s: %d" %  (scaffold, c0count))
         out_file.close()
 
-def alignment_stats(lanes, readfiles, out_dir, gen_ref, pos_stats):
+def alignment_stats(lanes, readfiles, out_dir, gen_ref, startpos, endpos):
     """
     EVERYTHING HERE IS OPTIONAL - BASIC QUANTIFICATION OF INDEL SIZE/FREQUENCY
     """
@@ -215,45 +263,36 @@ def alignment_stats(lanes, readfiles, out_dir, gen_ref, pos_stats):
         verbal_system('pysamstats --type variation ' + fileprefix + '.sorted.bam --fasta ' + gen_ref + '>' + fileprefix + '.variant.stats')
         verbalise("M", "Read depths for %s:"  % (lane))
         for scaffold in pos_stats:
-            cigar_stats(bamFile, scaffold, pos_stats[scaffold][0], pos_stats[scaffold][1])
+            cigar_stats(bamFile, scaffold, startpos, endpos)
 
 if __name__ == '__main__':
 
-    curr_dir = os.getcwd()
-
-    # CLI parser to get variables that are more likely to change run to run:
-    parser = argparse.ArgumentParser(description="Process fastq files for CRISPR analysis.\nCurrently works very well using defaults, requiring only the input file and path to fastq files. Ie:\ncrispralign.py -BRs -i <input_file> <fastq_dir>")
-    parser.add_argument("-D", "--index_path", type=str, dest="idx_path", default="./genome_idx", help="Specify the reference genome index path.\n(Default = /Volumes/Genome/CRISPR/genome_idx)")
-    parser.add_argument("-d", "--index_file", type=str, dest="idx_name", default="mini_genome", help="Specify the reference genome index name.\n(Default = 'mini_genome')")
-    parser.add_argument("-r", "--genome_ref", type=str, dest="gen_ref", default="./mini_genome.fa", help="Specify the fasta file of the genome to use for stats.\n(Default = mini_genome.fa)")
-    parser.add_argument("-o", "--output_dir", type=str, dest="out_dir", default=curr_dir, help="Specify an output directory.\n(Default = current working directory)")
-    parser.add_argument("fastq_dir", type=str, help="The directory containing all the fastq files for analysis.")
-    parser.add_argument("-i", "--input_file", type=str, dest="in_file", default=False, help="Specify an input file with site positions.\n(Format: scaffold    start    stop)")
-    parser.add_argument("-B", "--build_idx", action="store_true", help="Build the genome index file from specified fasta file")
-    parser.add_argument("-R", "--build_ref", action="store_true", help="Build the reference genome fasta file (will overwrite existing genome_ref)")
-    parser.add_argument("-s", "--align_stats", action="store_true", help="perform additional statistical analyses")
-    parser.add_argument("-a", "--skip_alignment", action="store_true", help="turns off read alignment")
+    parser = define_arguments()
     args = parser.parse_args()
 
-    # create some internal defaults for building and looking at sites:
-    if not args.in_file:
-        gene_stats = {"scaffold520": (276743, 276870), "scaffold50": (1377329, 1377469), "scaffold197": (1420598, 1420746)}
-        #pos_stats = {"scaffold197":(800,1500), "scaffold50":(800,1500), "scaffold520":(800,1500)}
-        lanes = ["8-1-m1","8-2-f1","8-4-m2","9-1-m1","10-1-f1","10-5-f1","12-1-f1","10-2-m1","8-3-m1","10-2-m2","11-2-m1","12-3-m1"]
-        sample_names = ["g1P6e","g1P6de","g1pP24e","CP6e","CP6de","CP24e","CP24de","Controls","CR6e","CR6de","CR24de","CR24e"]
-    else:
-        gene_stats, lanes = read_input(args.in_file)
+    verbalise = config.check_verbose(not(args.quiet))
+    logfile = config.create_log(args, outdir=args.directory, outname=args.output)
 
-    pos_stats = {}
-    for scaf in gene_stats:
-        pos_stats[scaf] = (800, gene_stats[scaf][1] - gene_stats[scaf][0] + 1200)
+    gene_stats, lanes = read_input(args.in_file)
+
 
     if args.build_ref:
-        print "constructing reference file"
-        build_reference(args.gen_ref, gene_stats)
+        verbalise("B",  "constructing reference file")
+        scaf_lengths = build_reference(args.gen_ref, gene_stats, args.buffer)
+    else:
+        scaf_lengths = {}
+        # calculate size of mini-genome:
+        for scaf in gene_stats:
+            scaf_lengths[scaf] = 0
+            handle = open(args.gen_ref, 'rb')
+            for line in handle:
+                if line[0] == ">":
+                    continue
+                else:
+                    scaf_lengths[scaf] += len(line.strip())
 
     if args.build_idx:
-        print "building index"
+        verbalise("B",  "building index")
         build_index(args.gen_ref, args.idx_path, args.idx_name)
 
     # collect all .fq files:
@@ -261,8 +300,12 @@ if __name__ == '__main__':
 
     # perform alignments!
     if not args.skip_alignment:
-		print "Aligning reads\n", "#"  * 40
-		align_reads(lanes, readfiles, args.idx_path, args.idx_name, args.out_dir, args.fastq_dir)
+		verbalise("B", "Aligning reads\n", "#"  * 40)
+		align_reads(lanes, readfiles, args.idx_path, args.idx_name, args.directory, args.fastq_dir)
     if args.align_stats:
-        alignment_stats(lanes, readfiles, args.out_dir, args.gen_ref, pos_stats)
+        pos_stats = {}
+        for scaf in gene_stats:
+            pos_stats[scaf] = (0, scaf_lengths[scaf])
+
+        alignment_stats(lanes, readfiles, args.directory, args.gen_ref, pos_stats[scaffold][0], pos_stats[scaffold][1])
 
