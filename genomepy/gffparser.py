@@ -202,45 +202,73 @@ class Splicer(object):
 
 class My_gff(object):
     "an object for quick assessment of where a GENE/SNP lies"
-    def __init__(self, gff_file=dbpaths['gff']):
+    def __init__(self, gff_file=dbpaths['gff'], primary_key='ID', highest='gene'):
 
-        self.genedict = {}
-        self.genecount = 0
-        self.geneids = {}
-        self.genescaf = {}
-        self.exondict = {}
-        self.strandinfo = {}
+        self.gff_origin = gff_file
+        self.primary_key = primary_key
+        self.highest_level = highest
+
+        self.genedict = {}  # a dictionary of scaffolds, containing a dictionary of genes
+        self.featurecount = 0  # number of features stored in class instance
+        self.genenames = {} # dictionary of useful feature names
+        self.genescaf = {}  # dictionary to find which scaf each feature is on
+        self.exondict = {}  # dictionary to list all exons for a feature
+        self.strandinfo = {} # dict to find which strand a feature is on
+        self.toplevel = {}  # top level dictionary (typically mRNA is the feature, so
+        #                     this dic allows clustering of mRNAs into their corr. genes
+        self.geneid = {}    # in case ID is not the primary identifier, to find parents
+
 
         gff_h = open(gff_file,'rb')
         for line in gff_h:
-            if line[0] == "#":  # ignore all comment lines:
-                continue
-            if line.split()[2] == 'mRNA':
-                self.genecount += 1
-                scaf = line.split()[0]
-                start = min(int(line.split()[3]), int(line.split()[4]))
-                stop = max(int(line.split()[3]), int(line.split()[4]))
-                geneid = re.search('ID=([^;]*)', line.split('\t')[8]).groups()[0]
-                if line.split()[6] == "+":
-                    self.strandinfo[geneid] = 1
-                else:
-                    self.strandinfo[geneid] = -1
-                self.genescaf[geneid] = scaf
+            attr = parse_atts(line)
+            fields = parse_cols(line)
+            start = cols['start']
+            stop = cols['end']
+            pkey = attr['ID']
+
+            if cols['type'] == 'gene':
                 try:
-                    genename = re.search('Name=([^;]*);', line.split('\t')[8]).groups()[0]
-                except:
-                    genename = "No_ortholog"
-                self.geneids[geneid] = genename
-                if scaf in self.genedict:
-                    self.genedict[scaf][geneid] = (start, stop)
+                    self.toplevel[attr['Name']] = {"mRNA":[],
+                                                   "Longname":attr['gene'],
+                                                   "locus":attr['Name'],
+                                                   "ID":attr['ID'],
+                                                   }
+                except KeyError:
+                    self.toplevel[attr['Name']] = {"mRNA":[]}
+
+            if cols['type'] == 'mRNA':
+                self.featurecount += 1
+                self.geneid[attr['ID']] = attr[pkey]
+
+                # add mRNA to list of mRNAs for given gene:
+                if attr['gene'] in self.toplevel:
+                    if self.toplevel[attr['gene']]['ID'] == attr['Parent']:
+                        self.toplevel[attr['gene']]['mRNA'].append(attr[pkey])
+
+                if cols['strand'] == "+":
+                    self.strandinfo[pkey] = 1
                 else:
-                    self.genedict[scaf] = {geneid:(start, stop)}
-            if line.split()[2] == 'CDS':
-                parentid = re.search('Parent=([^;]*)', line.split('\t')[8]).groups()[0]
-                start = min(int(line.split()[3]), int(line.split()[4]))
-                stop = max(int(line.split()[3]), int(line.split()[4]))
+                    self.strandinfo[pkey] = -1
+                self.genescaf[pkey] = cols['scaf']
+
+                # find most appropriate field for gene name:
+                for f in ["Product", "Name", "Dbxref", "ID"]:
+                    if f in attr:
+                        self.genenames[pkey] = attr[f]
+                        break
+                else:
+                    self.genenames[pkey] = "--------"
+
+                if scaf in self.genedict:
+                    self.genedict[scaf][pkey] = (start, stop)
+                else:
+                    self.genedict[scaf] = {pkey:(start, stop)}
+
+            if cols['type'] == 'CDS':
+                parentid = self.geneid[attr['Parent']]
                 if parentid in self.exondict:
-                    self.exondict[parentid].append((start, stop))
+                    self.exondict[parentid].append((start, stop, cols['phase']))
                 else:
                     self.exondict[parentid] = [(start, stop)]
 
@@ -258,16 +286,19 @@ class My_gff(object):
         return ingene
 
     def __str__(self):
-        return "%d scaffolds, %d genes" % (len(self.genedict),self.genecount)
+        gffname = os.path.basename(self.gff_origin).split('.')[0][:10]
+        return "%-10s: %d scaffolds, %d genes" % (gffname,
+                            len(self.genedict),self.featurecount)
 
-    __repr__ = __str__
+    def __repr__(self):
+        return "My_gff: %r %r %r" % (self.gff_origin, self.primary_key, self.highest_level)
 
     def __len__(self):
-        return (self.genecount)
+        return (self.featurecount)
 
-    def whichscaf(self, geneid, exact=True):
+    def whichscaf(self, pkey, exact=True):
         try:
-            scaf = self.genescaf[geneid]
+            scaf = self.genescaf[pkey]
         except KeyError:
             if exact:
                 scaf = None
@@ -275,7 +306,7 @@ class My_gff(object):
                 allgenes = ( gene for scaf in self.genedict for gene in self.genedict[scaf] )
                 matches = []
                 for gene in allgenes:
-                    if re.search(geneid, gene):
+                    if re.search(pkey, gene):
                         matches.append(gene)
                 if len(matches) == 1:
                     scaf = self.genescaf[matches[0]]
@@ -284,9 +315,9 @@ class My_gff(object):
 
         return scaf
 
-    def whichstrand(self, geneid, exact=True):
+    def whichstrand(self, pkey, exact=True):
         try:
-            strand = self.strandinfo[geneid]
+            strand = self.strandinfo[pkey]
         except KeyError:
             if exact:
                 strand = None
@@ -294,7 +325,7 @@ class My_gff(object):
                 allgenes = ( gene for scaf in self.genedict for gene in self.genedict[scaf] )
                 matches = []
                 for gene in allgenes:
-                    if re.search(geneid, gene):
+                    if re.search(pkey, gene):
                         matches.append(gene)
                 if len(matches) == 1:
                     strand = self.strandinfo[matches[0]]
@@ -306,9 +337,9 @@ class My_gff(object):
         scaf, posn = locus
         ingene = False
         try:
-            for geneid in self.genedict[scaf]:
-                if self.genedict[scaf][geneid][0] <= posn <= self.genedict[scaf][geneid][1]:
-                    ingene = geneid
+            for pkey in self.genedict[scaf]:
+                if self.genedict[scaf][pkey][0] <= posn <= self.genedict[scaf][pkey][1]:
+                    ingene = pkey
         except KeyError:
             ingene = None
 
@@ -334,14 +365,14 @@ class My_gff(object):
         and if it is, if it's in an exon. Or you can give a posn + gene (set gene=True),
         and it will quickly check if it's in the exon of that gene"""
         if not gene: # first check to see if it's in a gene (and get that gene)
-            geneid = self.ingene((locus,posn))
-            if not geneid:
+            pkey = self.ingene((locus,posn))
+            if not pkey:
                 return False
         else:
-            geneid = locus
+            pkey = locus
 
-        # now we have the geneid...
-        for start, end in self.exondict[geneid]:
+        # now we have the pkey...
+        for start, end in self.exondict[pkey]:
             if start <= posn <= end:
                 return True
         else:
@@ -349,10 +380,10 @@ class My_gff(object):
 
     def closest_splice(self, locus, posn):
         closest_distance = None
-        geneid = self.ingene((locus, posn))
+        pkey = self.ingene((locus, posn))
         if self.inexon(posn, locus):
             closest_distance = 999999999999
-            for start, end in self.exondict[geneid]:
+            for start, end in self.exondict[pkey]:
                 if abs(posn - start) < closest_distance:
                     closest_distance =  abs(posn - start)
                 if abs(end - posn) < closest_distance:
@@ -362,10 +393,10 @@ class My_gff(object):
     def findnearest(self, scaffold, hitpos):
         """ looks for the nearest gene to a given locus """
 
-        geneid = self.ingene((scaffold, hitpos))
-        if geneid:
-            upstream = (0, geneid)
-            downstream = (0, geneid)
+        pkey = self.ingene((scaffold, hitpos))
+        if pkey:
+            upstream = (0, pkey)
+            downstream = (0, pkey)
 
         else:
             closestup = 999999999
@@ -386,16 +417,49 @@ class My_gff(object):
 
         return upstream, downstream
 
-    def nameit(self, geneid):
+    def nameit(self, pkey):
         try:
-            return self.geneids[geneid]
+            return self.genenames[pkey]
         except KeyError:
-            return "Not_found"
+            return None
 
 ####### FUNCTIONS ############################################################
 
 
-##### GFF FILE MANIPULATION #####
+##### GFF FILE PARSING  ############
+
+def parse_atts(line):
+    """
+    Parses a single line from a gff file.
+    The function takes the 9th column (containing all the feature attributes) and returns
+    a dictionary of { attribute_name : attribute_value }
+    """
+    if len(line) == 0:
+        return None
+    if line[0] == '#':
+        return None
+    cols = line.split()
+    attr = { pair.split('=')[0]:pair.split('=')[1] for pair in " ".join(cols[8:]).split(';')  }
+    return attr
+
+def parse_cols(line):
+    """
+    Takes a gff line and extracts the information from the first 8 columns, returning
+    them in a dictionary.
+    """
+    if len(line) == 0:
+        return None
+    if line[0] == '#':
+        return None
+    cols = line.split()
+    attrs = { "scaf":cols[0],       "source":cols[1],   "type":cols[2],
+              "start":int(cols[3]),  "end":int(cols[4]),
+              "score":int(cols[5]),  "strand":cols[6],   "phase":int(cols[7])
+            }
+    return attrs
+
+
+##### GFF FILE MANIPULATION ########
 
 def gff2gtf(gff_file):
     "converts a gff file to gtf"
