@@ -244,6 +244,13 @@ def file_block(filehandle,  block, number_of_blocks=1000):
     while filehandle.tell() < end:
         yield filehandle.readline()
 
+def check_overwrite():
+    answer = raw_input("File exists! Do you want to overwrite? [Y/N]\n")
+    if answer.upper() in ["Y", "YES"]:
+        return True
+    else:
+        return False
+
 def create_log(args, outdir=None, outname='results'):
     ## create output folder and log file of arguments:
     timestamp = time.strftime("%b%d_%H.%M")
@@ -252,10 +259,22 @@ def create_log(args, outdir=None, outname='results'):
         if os.path.exists(newfolder) is False:  # check to see if folder already exists...
             os.mkdir(newfolder)
         filename = newfolder + '/' + outname + '.' + timestamp + ".log"
+        if os.path.exists(filename) is True: # ask to overwrite:
+            if check_overwrite():
+                pass
+            else:
+                exit()
     else:
         root_dir = os.getcwd()
         newfolder = root_dir + "/" + outname + "." + timestamp
-        os.mkdir(newfolder)  # don't have to check if it exists, as timestamp is unique
+        if os.path.exists(newfolder) is False:  # check to see if folder already exists...
+            os.mkdir(newfolder)
+        filename = newfolder + '/' + outname + '.' + timestamp + ".log"
+        if os.path.exists(filename) is True: # ask to overwrite:
+            if check_overwrite():
+                pass
+            else:
+                exit()
         filename = newfolder + "/" + outname + "." + timestamp + ".log"
 
     log_h = open(filename, 'w')
