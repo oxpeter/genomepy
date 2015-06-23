@@ -521,7 +521,7 @@ def extended_gff(gff_file):
     bed_h.close()
     gff_h.close()
 
-def make_bed(gff_file, dbpaths=dbpaths):
+def make_bed(gff_file, assembly_file=dbpaths['assone']):
     """ Takes a gff_file and creates a bed format including the scaffolds/contigs that
     do not have any features associated with them"""
 
@@ -534,7 +534,7 @@ def make_bed(gff_file, dbpaths=dbpaths):
 
     # create dictionary of scaffolds not annotated, and their sizes
     missing_dict = {}
-    assembly_handle = open(dbpaths['assone'], 'r')
+    assembly_handle = open(assembly_file, 'r')
     for line in assembly_handle:
         def_search = re.search('>(lcl\|[a-zC0-9]*)', line)
         line_len = len(line)

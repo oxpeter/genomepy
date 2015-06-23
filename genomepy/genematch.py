@@ -7,6 +7,8 @@ import os
 import sys
 import re
 import argparse
+from pkg_resources import resource_filename, resource_exists
+
 
 import numpy as np
 import Bio.Blast.NCBIWWW as ncbi
@@ -195,7 +197,6 @@ class Fisher_square(object):
         except ValueError:
             verbalise("R", "Error performing Fishers Exact:", self)
 
-
 ############################################
 def define_arguments():
     parser = argparse.ArgumentParser(description=
@@ -205,7 +206,7 @@ def define_arguments():
     # logging options:
     parser.add_argument("-q", "--quiet", action='store_true',default=False,
                         help="print fewer messages and output details")
-    parser.add_argument("-o", "--output", type=str, default='lorf2.out',
+    parser.add_argument("-o", "--output", type=str, default='genematch.out',
                         help="specify the filename to save results to")
     parser.add_argument("-d", "--directory", type=str,
                         help="specify the directory to save results to")

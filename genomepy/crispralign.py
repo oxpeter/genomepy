@@ -87,7 +87,7 @@ def define_arguments():
                         help="The directory containing all the fastq files for analysis.")
     parser.add_argument("-i", "--input_file",  type=str, dest="in_file", default=False,
                         help="Specify an input file with site positions.\n(Format: scaffold    start    stop)")
-                        parser.add_argument("-b", "--buffer",  type=int, default=1000,
+    parser.add_argument("-b", "--buffer",  type=int, default=1000,
                         help="Specify the buffer (in bp) when building genome_ref")
     parser.add_argument("-B", "--build_idx", action="store_true",
                         help="Build the genome index file from specified fasta file")
@@ -109,6 +109,8 @@ def verbal_system(arg_str):
     return r_val
 
 def build_index(gen_ref, idx_path, idx_name):
+    if not os.path.isdir(idx_path):
+        os.mkdir(idx_path)
     cmd_line = "gmap_build -d " + idx_name + " -D " + idx_path + " " + gen_ref
     print "Running: ", cmd_line
     print os.system(cmd_line)
@@ -122,7 +124,7 @@ def build_reference(gen_ref, pos_stats, buffer=1000):
     for scaffold in pos_stats:
         sequence = genematch.extractseq(scaffold, type='fa', OGS='/Volumes/antqueen/genomics/genomes/C.biroi/Cbir.assembly.v3.0', startpos=pos_stats[scaffold][0]-buffer, endpos=pos_stats[scaffold][1]+buffer)
         ref_h.write( ">%s\n%s\n" % (scaffold, sequence) )
-        scaf_lengths[scaf] = len(sequence)
+        scaf_lengths[scaffold] = len(sequence)
     ref_h.close()
     return scaf_lengths
 
@@ -174,7 +176,7 @@ def align_reads(lanes, readfiles, idx_path, idx_name, out_dir, fq_dir):
         verbalise("B", "BamFile = ", bamFile)
 
         # this finds all of the .fastq files associated with the sample number
-        fq_path = fq_dir + '/*' + lane + '*.fastq'
+        fq_path = fq_dir + '/*' + lane + '*.fastq*'
         reads = glob.glob(fq_path)
 
         # gsnap only works on unzipped files. Therefore need to check files are .fastq:
@@ -296,12 +298,13 @@ if __name__ == '__main__':
         build_index(args.gen_ref, args.idx_path, args.idx_name)
 
     # collect all .fq files:
-    readfiles = os.listdir(args.fastq_dir);
+    readfiles = os.listdir(args.fastq_dir[0]);
 
     # perform alignments!
     if not args.skip_alignment:
 		verbalise("B", "Aligning reads\n", "#"  * 40)
-		align_reads(lanes, readfiles, args.idx_path, args.idx_name, args.directory, args.fastq_dir)
+		align_reads(lanes, readfiles, args.idx_path, args.idx_name,
+		            args.directory, args.fastq_dir[0])
     if args.align_stats:
         pos_stats = {}
         for scaf in gene_stats:
