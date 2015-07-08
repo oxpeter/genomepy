@@ -217,40 +217,43 @@ class My_gff(object):
         self.toplevel = {}  # top level dictionary (typically mRNA is the feature, so
         #                     this dic allows clustering of mRNAs into their corr. genes
         self.geneid = {}    # in case ID is not the primary identifier, to find parents
-
+        self.mrna2gene = {} # allow identification of gene parent of an mRNA feature
+        self.master = {}    # for storing master gene exon positions (ordered)
 
         gff_h = open(gff_file,'rb')
         for line in gff_h:
             attr = parse_atts(line)
             fields = parse_cols(line)
-            start = cols['start']
-            stop = cols['end']
-            pkey = attr['ID']
+            start = fields['start']
+            stop = fields['end']
+            pkey = attr[primary_key]
 
-            if cols['type'] == 'gene':
+            if fields['type'] == 'gene':
                 try:
                     self.toplevel[attr['Name']] = {"mRNA":[],
                                                    "Longname":attr['gene'],
                                                    "locus":attr['Name'],
                                                    "ID":attr['ID'],
+                                                   "scaffold":fields['scaf'],
                                                    }
                 except KeyError:
                     self.toplevel[attr['Name']] = {"mRNA":[]}
 
-            if cols['type'] == 'mRNA':
+            if fields['type'] == 'mRNA':
                 self.featurecount += 1
-                self.geneid[attr['ID']] = attr[pkey]
+                self.geneid[attr['ID']] = pkey
 
                 # add mRNA to list of mRNAs for given gene:
-                if attr['gene'] in self.toplevel:
-                    if self.toplevel[attr['gene']]['ID'] == attr['Parent']:
-                        self.toplevel[attr['gene']]['mRNA'].append(attr[pkey])
-
-                if cols['strand'] == "+":
+                if 'gene' in attr:
+                    if attr['gene'] in self.toplevel:
+                        if self.toplevel[attr['gene']]['ID'] == attr['Parent']:
+                            self.toplevel[attr['gene']]['mRNA'].append(pkey) ## attr[pkey]
+                            self.mrna2gene[pkey] = attr['gene']
+                if fields['strand'] == "+":
                     self.strandinfo[pkey] = 1
                 else:
-                    self.strandinfo[pkey] = -1
-                self.genescaf[pkey] = cols['scaf']
+                    self.strandinfo[pkey] = 0
+                self.genescaf[pkey] = fields['scaf']
 
                 # find most appropriate field for gene name:
                 for f in ["Product", "Name", "Dbxref", "ID"]:
@@ -260,17 +263,18 @@ class My_gff(object):
                 else:
                     self.genenames[pkey] = "--------"
 
+                scaf = fields['scaf']
                 if scaf in self.genedict:
                     self.genedict[scaf][pkey] = (start, stop)
                 else:
                     self.genedict[scaf] = {pkey:(start, stop)}
 
-            if cols['type'] == 'CDS':
+            if fields['type'] == 'CDS':
                 parentid = self.geneid[attr['Parent']]
                 if parentid in self.exondict:
-                    self.exondict[parentid].append((start, stop, cols['phase']))
+                    self.exondict[parentid].append((start, stop, fields['phase']))
                 else:
-                    self.exondict[parentid] = [(start, stop)]
+                    self.exondict[parentid] = [(start, stop, fields['phase'])]
 
     def __contains__(self, locus):
         "looks to see if locus is within gene. Does not consider introns/exons"
@@ -295,6 +299,36 @@ class My_gff(object):
 
     def __len__(self):
         return (self.featurecount)
+
+    def build_master_gene(self):
+        """
+        For each gene, extract all exons, merge overlapping exons, construct framework of
+        maximum bounds for each exon, assign exon number (5' to 3'). Add to master_gene
+        dic. This method does not alter any existing attributes of the gff instance
+        (unless the master_gene attribute had already been created).
+        """
+        # get all exons:
+        for gene in self.toplevel:
+
+            exons = []
+            for mrna in self.toplevel[gene]['mRNA']:
+                exons += self.exondict[mrna]
+            exonlist = list(set(exons))
+
+            if len(exonlist) == 0:
+                continue
+
+            # create master overlapping exons:
+            while len(exonlist[0]) == 3:
+                newlists = [],[] # 1st list = non-overlapping exons, 2nd list = overlapping
+                for x in exonlist:
+                    newlists[overlaps(x, exonlist[0])].append(x)
+                all_positions = [xpos for tup in newlists[1] for xpos in tup[:2] ]
+                exonlist = newlists[0] + [(min(*all_positions), max(*all_positions))]
+
+            self.master[gene] =  sorted([ x[:2] for x in exonlist ],
+                                        key=lambda i: i[0],
+                                        reverse=(not self.strandinfo[mrna]))
 
     def whichscaf(self, pkey, exact=True):
         try:
@@ -454,7 +488,7 @@ def parse_cols(line):
     cols = line.split()
     attrs = { "scaf":cols[0],       "source":cols[1],   "type":cols[2],
               "start":int(cols[3]),  "end":int(cols[4]),
-              "score":int(cols[5]),  "strand":cols[6],   "phase":int(cols[7])
+              "score":cols[5],  "strand":cols[6],   "phase":cols[7]
             }
     return attrs
 
@@ -1131,6 +1165,15 @@ def parse_go(gene, gofile=dbpaths['goterms']):
 
 
 ##### INITIATION & MISC #####
+
+def overlaps(x1, x2):
+    "returns true if the exons overlap in position. Does not check if on same scaffold!"
+    x1_1 = min(x1[:2])
+    x1_2 = max(x1[:2])
+    x2_1 = min(x2[:2])
+    x2_2 = max(x2[:2])
+
+    return  x2_1 <= x1_1 <= x2_2 or x1_1 <= x2_1 <= x1_2
 
 def mutate_codon(old_seq, frame, new_nt):
     """Given a Bio.seq.seq sequence, a new nucleotide, and its position in the sequence,
