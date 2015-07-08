@@ -8,7 +8,7 @@ import sys
 import re
 import argparse
 from pkg_resources import resource_filename, resource_exists
-
+import random
 
 import numpy as np
 import Bio.Blast.NCBIWWW as ncbi
@@ -17,6 +17,7 @@ from Bio.Seq import Seq
 from Bio.Alphabet import generic_dna, IUPAC
 from scipy.stats import fisher_exact
 from scipy import interpolate
+import statsmodels.stats.multitest as smm
 import matplotlib.pyplot as plt
 
 from genomepy import config
@@ -210,6 +211,9 @@ def define_arguments():
                         help="specify the filename to save results to")
     parser.add_argument("-d", "--directory", type=str,
                         help="specify the directory to save results to")
+    parser.add_argument("-D", "--display_on", action='store_true',default=False,
+                        help="display graph results (eg for p value calculation)")
+
 
     # data file options:
     parser.add_argument("-i", "--input", type=str,
@@ -217,17 +221,36 @@ def define_arguments():
     parser.add_argument("-c", "--column", type=int, default=0,
                         help="column to extract data from")
     parser.add_argument("-f", "--datafile", type=str,
-                        help="file containing gene terms")
+                        help="file containing genes and their corresponding terms")
     parser.add_argument("-g", "--gofile", type=str,
                         help=".obo file containing go terms,definitions etc")
 
     # analysis options:
     parser.add_argument("-E", "--enrichment", action='store_true',default=False,
                         help="perform GO term enrichment on file")
+    parser.add_argument("-R", "--random", type=int, default=0,
+                        help="number of genes to randomly select from input file")
+    parser.add_argument("-I", "--iterations", type=int, default=1,
+                        help="the number of iterations to perform")
     parser.add_argument("-T", "--min_terms", type=int, default=2,
                         help="the minimum number of terms to report in enrichment results")
-    parser.add_argument("-Q", "--max_q", type=int, default=0.05,
+    parser.add_argument("-Q", "--max_q", type=float, default=0.05,
                         help="the maximum q_value to report in enrichment results")
+    parser.add_argument("-A", "--alpha", type=float, default=0.05,
+                        help="the fdr cutoff threshold")
+    parser.add_argument("-m", "--method", type=str, default="fdr_bh",
+                        help="""which FDR method to use >>
+                        `bonferroni` : one-step correction |
+                        `sidak` : one-step correction |
+                        `holm-sidak` : step down method using Sidak adjustments |
+                        `holm` : step-down method using Bonferroni adjustments |
+                        `simes-hochberg` : step-up method  (independent) |
+                        `hommel` : closed method based on Simes tests (non-negative) |
+                        `fdr_bh` : Benjamini/Hochberg  (non-negative) |
+                        `fdr_by` : Benjamini/Yekutieli (negative) |
+                        `fdr_tsbh` : two stage fdr correction (non-negative) |
+                        `fdr_tsbky` : two stage fdr correction (non-negative)
+                        """)
 
 
     return parser
@@ -243,7 +266,8 @@ def set_go_item(attributes):
                             attributes['synonym'],
                         )
     else:
-        verbalise("R", "CANNOT BUILD GO ITEM. INSUFFICIENT ATTRIBUTES:\n", " ".join([str(p) for p in attributes.keys()]))
+        pass
+        #verbalise("R", "CANNOT BUILD GO ITEM. INSUFFICIENT ATTRIBUTES:\n", " ".join([str(p) for p in attributes.keys()]))
         return None
     return go_item
 
@@ -1015,7 +1039,7 @@ def cbir_ncbi(geneobj, dbpaths=dbpaths):
     return gene_gi
 
 ######## Statistical Functions #########################################
-def p_to_q(pvalues, display_on=False, cut1s=False, set_pi_hat=False):
+def p_to_q_storey_tibshirani(pvalues, display_on=False, cut1s=False, set_pi_hat=False):
     """
     Given the list of pvalues, convert to pFDR q-values.
     According to Storey and Tibshirani (2003) PNAS 100(16) : 9440
@@ -1089,6 +1113,12 @@ def p_to_q(pvalues, display_on=False, cut1s=False, set_pi_hat=False):
 
     return q_val
 
+def p_to_q(pvalues, alpha=0.05, method='fdr_bh'):
+    rej, pval_corr, al_cor_sid, al_cor_bh = smm.multipletests(pvalues, alpha=alpha, method=method)
+    return  { pvalues[i]:pval_corr[i] for i in range(len(pvalues)) }
+
+def randBinList(n):
+    return  [random.randint(0,1) for b in range(0,n)]
 
 ########################################################################
 def mainprog():
@@ -1124,31 +1154,54 @@ if __name__ == '__main__':
     if args.enrichment:
         verbalise("B", "Parsing GO terms")
         id_dic = build_go_terms(args.gofile)
-        verbalise("G", [str(p) for p in id_dic.items()][:5])
         verbalise("B",
              "performing GO enrichment on file %s using GO file %s" % (os.path.basename(args.input), os.path.basename(args.datafile)))
 
-        # perform Fisher's Exact Test for enrichment of GO terms:
-        geneset = config.make_a_list(args.input, col_num=args.column)
-        f_squares = go_enrichment(geneset, go_info=id_dic, return_odds=False, gofile=args.datafile)
-        p_list = [p.p for p in f_squares]
-        q_dic = p_to_q(p_list, display_on=True, cut1s=False, set_pi_hat=False)
+        # create list of genes to search for enrichment from:
+        if args.random > 0:
+            allgenes = config.make_a_list(args.input, col_num=args.column)
+            geneset = random.sample(allgenes, args.random)
+        else:
+            geneset = config.make_a_list(args.input, col_num=args.column)
 
-        # prepare result strings:
-        header = "Significantly enriched GO terms (Q-value <= 0.05)\n"
-        resultstring = "\n".join([str(s) for s in f_squares if s.TwG >= args.min_terms and q_dic[s.p] <= args.max_q])
-        resultlist = "\n".join(sorted([str(s.id_info) for s in f_squares if s.TwG >= args.min_terms and q_dic[s.p] <= args.max_q], key=lambda x: x[13]))
-        #resultstring = "\n".join(sorted([str(id_dic[p[0]]) for p in pvalues.items() if q_dic[p[1][0]] <= 0.05 ], key=lambda x: x[1]))
+        gene_gos = GO_maker(args.datafile)
+        for iter in range(args.iterations):
+            # perform Fisher's Exact Test for enrichment of GO terms:
+            f_squares = go_enrichment(geneset,
+                                     go_info=id_dic,
+                                     return_odds=False,
+                                     background_go=gene_gos)
+            p_list = [p.p for p in f_squares]
+            q_dic = p_to_q(p_list, alpha=args.alpha, method=args.method)
 
-        # output to screen:
-        verbalise("M", header)
-        verbalise(resultstring)
-        verbalise("G", resultlist)
+            # find which genes in the list contributed significant go terms:
+            sig_gos = [ s.id_info.id for s in f_squares if s.TwG >= args.min_terms and q_dic[s.p] <= args.max_q]
+            gene_contrib = [ g for g in geneset if len(set(sig_gos) & set(gene_gos.findem(g).keys())) >= 1 ]
 
-        # output to file:
-        outfile = open(logfile[:-3] + "out", 'w')
-        outfile.write(header)
-        outfile.write(resultlist)
-        outfile.write("\n\nFisher's Exact Test results for enriched GO terms:\n")
-        outfile.write(resultstring)
-        outfile.close()
+            # prepare result strings:
+            contrib = "%d/%d (%.2f%%) of genes had enriched go terms:" % (len(gene_contrib),len(geneset), 100.0 * len(gene_contrib)/len(geneset))
+            num_go_enrich = sum( 1 for s in f_squares if s.TwG >= args.min_terms and q_dic[s.p] <= args.max_q)
+            header = "Significantly enriched GO terms (Q-value <= 0.05)\n"
+            resultstring = "\n".join([str(s) for s in f_squares if s.TwG >= args.min_terms and q_dic[s.p] <= args.max_q])
+            resultlist = "\n".join(sorted([str(s.id_info) for s in f_squares if s.TwG >= args.min_terms and q_dic[s.p] <= args.max_q], key=lambda x: x[13]))
+
+            # output to screen:
+            verbalise("M", header)
+            verbalise("G", "%d significantly enriched go terms found" % num_go_enrich)
+            verbalise(resultstring)
+            verbalise("C", contrib)
+            verbalise("C", gene_contrib)
+            verbalise("G", resultlist)
+            verbalise("W", "")
+
+            # output to file:
+            outname = logfile[:-3] + "iter" + str(iter) +  ".out"
+            outfile = open(outname, 'w')
+            outfile.write(header)
+            outfile.write("%d significantly enriched go terms found\n" % num_go_enrich)
+            outfile.write(resultlist)
+            outfile.write("\n\n" + contrib + "\n")
+            outfile.write("\n".join(gene_contrib) + "\n")
+            outfile.write("\n\nFisher's Exact Test results for enriched GO terms:\n")
+            outfile.write(resultstring)
+            outfile.close()
