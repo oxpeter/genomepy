@@ -233,13 +233,14 @@ def define_arguments():
     parser.add_argument("-I", "--iterations", type=int, default=1,
                         help="the number of iterations to perform")
     parser.add_argument("-T", "--min_terms", type=int, default=2,
-                        help="the minimum number of terms to report in enrichment results")
+                        help="""the minimum number of terms to report in enrichment
+                        results (default = 2)""")
     parser.add_argument("-Q", "--max_q", type=float, default=0.05,
                         help="the maximum q_value to report in enrichment results")
     parser.add_argument("-A", "--alpha", type=float, default=0.05,
-                        help="the fdr cutoff threshold")
+                        help="the fdr cutoff threshold (default=0.05)")
     parser.add_argument("-m", "--method", type=str, default="fdr_bh",
-                        help="""which FDR method to use >>
+                        help="""which FDR method to use (default = fdr_bh) >>
                         `bonferroni` : one-step correction |
                         `sidak` : one-step correction |
                         `holm-sidak` : step down method using Sidak adjustments |
@@ -1163,6 +1164,7 @@ if __name__ == '__main__':
             geneset = random.sample(allgenes, args.random)
         else:
             geneset = config.make_a_list(args.input, col_num=args.column)
+        verbalise("C", "%d genes found" % (len(geneset)))
 
         gene_gos = GO_maker(args.datafile)
         for iter in range(args.iterations):
