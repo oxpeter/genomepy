@@ -14,38 +14,11 @@
 # samtools, gsnap, pysamstats
 
 
-# usage: crispralign.py [-h] [-D IDX_PATH] [-d IDX_NAME] [-r GEN_REF]
-#                      [-o OUT_DIR] [-B] [-R] [-s]
-#                      fastq_dir
-#
-# Process fastq files for CRISPR analysis
-#
-# positional arguments:
-#   fastq_dir             The directory containing all the fastq files for
-#                         analysis.
-#
-# optional arguments:
-#   -h, --help            show this help message and exit
-#   -D IDX_PATH, --index_path IDX_PATH
-#                         Specify the reference genome index path. (Default =
-#                         /Volumes/Genome/CRISPR/genome_idx)
-#   -d IDX_NAME, --index_file IDX_NAME
-#                         Specify the reference genome index name. (Default =
-#                         'mini_genome')
-#   -r GEN_REF, --genome_ref GEN_REF
-#                         Specify the fasta file of the genome to use for stats.
-#                         (Default = mini_genome.fa)
-#   -o OUT_DIR, --directory OUT_DIR
-#                         Specify an output directory. (Default = current
-#                         working directory)
-#   -B, --build_idx       Build the genome index file from specified fasta file
-#   -R, --build_ref       Build the reference genome fasta file (will overwrite
-#                         existing genome_ref)
-#   -s, --align_stats     perform additional statistical analyses
-
-
 # output:
+# .sam file for each sample
 # sorted .bam files for each sample
+# variant.stat files showing indels and SNPs for each site
+
 
 # input:
 # directory of .fastq files with numbered samples denoted by *SX*.fastq (the default output from an Illumina MiSeq instrument)
@@ -55,6 +28,8 @@ import time, datetime # this is for determining how long the run will take
 import argparse
 
 import pysam
+import matplotlib.pyplot as plt
+import pandas as pd
 
 from genomepy import genematch, config
 
@@ -67,7 +42,7 @@ def define_arguments():
     # logging options:
     parser.add_argument("-q", "--quiet", action='store_true',default=False,
                         help="print fewer messages and output details")
-    parser.add_argument("-f", "--output", type=str, default='lorf2.out',
+    parser.add_argument("-o", "--output", type=str, default='CRISPR',
                         help="specify the filename to save results to")
     parser.add_argument("--directory", type=str, default=os.getcwd(),
                         help="specify the directory to save results to")
@@ -97,6 +72,8 @@ def define_arguments():
                         help="perform additional statistical analyses")
     parser.add_argument("-a", "--skip_alignment", action="store_true",
                         help="turns off read alignment")
+    parser.add_argument("-V", "--view_stats", action="store_true",
+                        help="view results of statistical analyses (indel frequency per site)")
 
     return parser
 
@@ -199,7 +176,8 @@ def align_reads(lanes, readfiles, idx_path, idx_name, out_dir, fq_dir):
 
 
         # gsnap alignment (specs for -d and -D can be supplied at CLI)
-        print os.system('cat ' + " ".join(reads) + ' | gsnap -t 4 -y 250 -z 250 -A sam -D ' + idx_path + ' -d ' + idx_name + ' --input-buffer-size 10000 --sam-multiple-primaries > ' + fileprefix + '.sam')
+        verbalise("B", "Aligning reads from files: %s" % (" ".join(reads)))
+        print os.system('cat ' + " ".join(reads) + ' | gsnap -t 4 -y 250 -z 250 -A sam -D ' + idx_path + ' -d ' + idx_name + ' --input-buffer-size 10000 --sam-multiple-primaries --use-shared-memory=0 > ' + fileprefix + '.sam')
 
         # convert from .sam file to .bam file
         verbal_system('samtools view -b -S ' + fileprefix + '.sam > ' + fileprefix + '.bam')
@@ -257,15 +235,33 @@ def alignment_stats(lanes, readfiles, out_dir, gen_ref, startpos, endpos):
     """
 
     for lane in lanes:
-
         fileprefix = '/'.join([out_dir , lane])
-
         bamFile= '.'.join([fileprefix,'sorted.bam']);
-        # use pysamstats to count the number of reads at each bp that have aligned with an insertion or deletion
-        verbal_system('pysamstats --type variation ' + fileprefix + '.sorted.bam --fasta ' + gen_ref + '>' + fileprefix + '.variant.stats')
+
+        # use pysamstats to count the number of reads at each bp that have aligned
+        # with an insertion or deletion:
+        verbal_system('pysamstats --max-depth=100000000 --type variation ' + fileprefix + '.sorted.bam --fasta ' + gen_ref + '>' + fileprefix + '.variant.stats')
         verbalise("M", "Read depths for %s:"  % (lane))
         for scaffold in pos_stats:
             cigar_stats(bamFile, scaffold, startpos, endpos)
+
+def view_stats(filelist, out_dir):
+    "function to graph indel frequency"
+    for lane in lanes:
+        fileprefix = '/'.join([out_dir , lane])
+        stats_file = '.'.join([fileprefix,'variant.stats'])
+
+
+        variants = pd.read_csv(stats_file, sep='\t')
+        variants['indel_rate'] = (variants['insertions'] + variants['deletions']) / variants['reads_all']
+
+        # remove sites with less than 1000 reads:
+        variants_trimmed = variants[variants['reads_all'] > 1000]
+        variants.loc[variants.reads_all < 1000, 'indel_rate'] = 0
+
+        variants_trimmed['indel_rate'].plot()
+        #plt.title(stats_file)
+    plt.show()
 
 if __name__ == '__main__':
 
@@ -300,15 +296,21 @@ if __name__ == '__main__':
     # collect all .fq files:
     readfiles = os.listdir(args.fastq_dir[0]);
 
-    # perform alignments!
+    # perform alignments:
     if not args.skip_alignment:
 		verbalise("B", "Aligning reads\n", "#"  * 40)
 		align_reads(lanes, readfiles, args.idx_path, args.idx_name,
 		            args.directory, args.fastq_dir[0])
+
+    # collect statistics on aligned files:
     if args.align_stats:
         pos_stats = {}
         for scaf in gene_stats:
             pos_stats[scaf] = (0, scaf_lengths[scaf])
 
-        alignment_stats(lanes, readfiles, args.directory, args.gen_ref, pos_stats[scaffold][0], pos_stats[scaffold][1])
+        alignment_stats(lanes, readfiles, args.directory, args.gen_ref, pos_stats[scaf][0], pos_stats[scaf][1])
+
+    # display indel frequency for each lane:
+    if args.view_stats:
+        view_stats(lanes, args.directory)
 
