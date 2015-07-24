@@ -7,6 +7,14 @@ import math
 
 import argparse
 
+from genomepy import config
+
+###### INITIALISE THE FILE PATHS NEEDED FOR ANALYSIS #######################
+
+dbpaths = config.import_paths()
+
+############################################################################
+
 def count_deflines(fastafile):
     "counts number of sequences are in a fasta file"
     fasta_h = open(fastafile, 'rb')
@@ -64,9 +72,12 @@ if __name__ == '__main__':
 
     # input options
     parser.add_argument("-I", "--input_file", type=str, help="The peptide fasta file (query file)")
-    parser.add_argument("-D", "--database", type=str, default='/home/antqueen/genomics/indices/orthomcl/CbirAmelDmel', help="The blast database to use (target db)")
-    parser.add_argument("-b", "--blast_type", type=str, default='blastp', help="The blast algorithm to use. (default = blastp)")
-    parser.add_argument("-p", "--num_threads", type=int, default=1, help="number of threads to distribute blast over")
+    parser.add_argument("-D", "--database", type=str, default=dbpaths['blastpep'] + '/CbirAmelDmel',
+                        help="The blast database to use (target db)")
+    parser.add_argument("-b", "--blast_type", type=str, default='blastp',
+                        help="The blast algorithm to use. (default = blastp)")
+    parser.add_argument("-p", "--num_threads", type=int, default=1,
+                        help="number of threads to distribute blast over")
 
     args = parser.parse_args()
 
