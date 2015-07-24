@@ -33,10 +33,18 @@ import pandas as pd
 
 from genomepy import genematch, config
 
+###### INITIALISE THE FILE PATHS NEEDED FOR ANALYSIS #######################
+
+dbpaths = config.import_paths()
+
+############################################################################
 
 def define_arguments():
     # CLI parser to get variables that are more likely to change run to run:
-    parser = argparse.ArgumentParser(description="Process fastq files for CRISPR analysis.\nCurrently works very well using defaults, requiring only the input file and path to fastq files. Ie:\ncrispralign.py -BRs -i <input_file> <fastq_dir>")
+    parser = argparse.ArgumentParser(description="""Process fastq files for CRISPR
+                    analysis.\nCurrently works very well using defaults, requiring only
+                    the input file and path to fastq files. Ie:
+                    \ncrispralign.py -BRs -i <input_file> <fastq_dir>""")
 
     ### input options ###
     # logging options:
@@ -50,24 +58,27 @@ def define_arguments():
 
     parser.add_argument("-D", "--index_path", type=str, dest="idx_path",
                         default="./genome_idx",
-                        help="Specify the reference genome index path.\n(Default = /Volumes/Genome/CRISPR/genome_idx)")
+                        help="Specify the reference genome index path.\n(Default = ./genome_idx)")
     parser.add_argument("-d", "--index_file", type=str, dest="idx_name",
                         default="mini_genome",
                         help="Specify the reference genome index name.\n(Default = 'mini_genome')")
     parser.add_argument("-r", "--genome_ref", type=str, dest="gen_ref",
                         default="./mini_genome.fa",
-                        help="Specify the fasta file of the genome to use for stats.\n(Default = mini_genome.fa)")
+                        help="""Specify the fasta file of the genome to use for stats.\n
+                        (Default = mini_genome.fa)""")
 
     parser.add_argument("fastq_dir", type=str, nargs=1,
                         help="The directory containing all the fastq files for analysis.")
     parser.add_argument("-i", "--input_file",  type=str, dest="in_file", default=False,
-                        help="Specify an input file with site positions.\n(Format: scaffold    start    stop)")
+                        help="""Specify an input file with site positions.\n
+                        (Format: scaffold    start    stop)""")
     parser.add_argument("-b", "--buffer",  type=int, default=1000,
                         help="Specify the buffer (in bp) when building genome_ref")
     parser.add_argument("-B", "--build_idx", action="store_true",
                         help="Build the genome index file from specified fasta file")
     parser.add_argument("-R", "--build_ref", action="store_true",
-                        help="Build the reference genome fasta file (will overwrite existing genome_ref)")
+                        help="""Build the reference genome fasta file (will overwrite
+                        existing genome_ref)""")
     parser.add_argument("-s", "--align_stats", action="store_true",
                         help="perform additional statistical analyses")
     parser.add_argument("-a", "--skip_alignment", action="store_true",
@@ -99,7 +110,7 @@ def build_reference(gen_ref, pos_stats, buffer=1000):
     # extract sequences from reference genome (identified under OGS):
     # adds a buffer of 1000bp to either end
     for scaffold in pos_stats:
-        sequence = genematch.extractseq(scaffold, type='fa', OGS='/Volumes/antqueen/genomics/genomes/C.biroi/Cbir.assembly.v3.0', startpos=pos_stats[scaffold][0]-buffer, endpos=pos_stats[scaffold][1]+buffer)
+        sequence = genematch.extractseq(scaffold, type='fa', OGS=dbpaths['ass'], startpos=pos_stats[scaffold][0]-buffer, endpos=pos_stats[scaffold][1]+buffer)
         ref_h.write( ">%s\n%s\n" % (scaffold, sequence) )
         scaf_lengths[scaffold] = len(sequence)
     ref_h.close()
@@ -259,7 +270,10 @@ def view_stats(filelist, out_dir):
         variants_trimmed = variants[variants['reads_all'] > 1000]
         variants.loc[variants.reads_all < 1000, 'indel_rate'] = 0
 
-        variants_trimmed['indel_rate'].plot()
+        try:
+            variants_trimmed['indel_rate'].plot()
+        except:
+            continue
         #plt.title(stats_file)
     plt.show()
 

@@ -119,20 +119,20 @@ def blastseq(seq, seqnames=None, inpath='/Users/POxley/blastinput.tmp' , outpath
 
     if outfmt == 'tab':
         # for tabular output:
-        blastcmd = 'blastn -query ' + inpath + ' -db /Volumes/antqueen/genomics/indices/BLAST_databases/nucleotide/Cbir.v3.0 -outfmt 6 -word_size 7 -evalue 1000000 -out ' + outpath
+        blastcmd = 'blastn -query ' + inpath + ' -db ' + dbpaths['blastnuc'] + '/Cbir.v3.0 -outfmt 6 -word_size 7 -evalue 1000000 -out ' + outpath
 
     elif outfmt == 'xml':
         # for xml output:
-        blastcmd = 'blastn -query ' + inpath + ' -db /Volumes/antqueen/genomics/indices/BLAST_databases/nucleotide/Cbir.v3.0 -outfmt 5 -word_size 7 -evalue 1000000 -out ' + outpath
+        blastcmd = 'blastn -query ' + inpath + ' -db ' + dbpaths['blastnuc'] + '/Cbir.v3.0 -outfmt 5 -word_size 7 -evalue 1000000 -out ' + outpath
 
     elif outfmt == 'crisprtab':
         # for tab delimited values used in crispr search parsing:
-        blastcmd = 'blastn -query ' + inpath + " -db /Volumes/antqueen/genomics/indices/BLAST_databases/nucleotide/Cbir.v3.0 -outfmt '6 qseqid qlen nident mismatch gaps sseq sseqid sstart send qstart' -word_size 7 -evalue 1000000 -out " + outpath
+        blastcmd = 'blastn -query ' + inpath + ' -db ' + dbpaths['blastnuc'] + "/Cbir.v3.0 -outfmt '6 qseqid qlen nident mismatch gaps sseq sseqid sstart send qstart' -word_size 7 -evalue 1000000 -out " + outpath
 
     else:
         # if you want blast results that are viewer friendly:
         blastcmd_vis = 'blastn -query ' + inpath + \
-            ' -db /Volumes/antqueen/genomics/indices/BLAST_databases/nucleotide/Cbir.v3.0 -out ' + \
+            ' -db ' + dbpaths['blastnuc'] + '/Cbir.v3.0 -out ' + \
             ' -out ' + outpath + \
             ' -outfmt 3 -word_size 7 -evalue 1000000'
 
@@ -168,7 +168,7 @@ def findnearest(scaffold, hitpos, gff_p=dbpaths['gff']):
     return downstream, upstream
 
 def scaflength(scaffold):
-    scaffseq = genematch.extractseq(scaffold, type='fa', OGS='/Volumes/antqueen/genomics/genomes/C.biroi/Cbir.assembly.v3.0')
+    scaffseq = genematch.extractseq(scaffold, type='fa', OGS=dbpaths['ass'])
     return len(scaffseq)
 
 def parse_crispr_blast(blast_results, gffobj, id_thresh=18, gap_thresh=0, shownearest=True):
@@ -307,14 +307,29 @@ if __name__ == '__main__':
 
     ##### CLI Argument Parser #####
     parser = argparse.ArgumentParser(description="Finds and assesses CRISPR sites")
-    parser.add_argument("-s", "--sequence_file", type=str, dest="seq_path", default='/Volumes/antqueen/genomics/genomes/C.biroi/Cbir.assembly.v3.0_singleline.fa', help="Specify the .fa file containing the sequence to be searched")
-    parser.add_argument("-p", "--pattern", type=str, dest="pattern", default='(?=([Gg][Gg].{18}.[Gg][Gg]))|(?=([Cc][Cc]..{18}[Cc][Cc]))', help="Specify the regular expression string to search with.")
-    parser.add_argument("-r", "--guide_rna", type=str, help="Use a pre-defined guide RNA sequence:\nsx - short exogenous\nlx - long exogenous\nsn - short endogenous\nln - long endogenous")
-    parser.add_argument("-o", "--output_file", type=str,  help="Specify a file in which to save results.")
-    parser.add_argument("-g", "--gaps_allowed", type=int, dest="gaps_allowed", default=0, help="Specify the number of gaps allowed in reported sequence matches.\nDefault = 0")
-    parser.add_argument("-i", "--id_thresh", type=int,  default=18, help="Specify the minimum id to report in sequence matches.\nDefault = 18")
-    parser.add_argument("-t", "--threshold", type=int, dest="threshold", default=76, help="Specify the minimum %%id to report in sequence matches.\nDefault = 76")
-    parser.add_argument("-x", "--exogenous", action='store_true',  help="use if sequence is exogenous, to do second blast with GG added to seq.")
+    parser.add_argument("-s", "--sequence_file", type=str, dest="seq_path",
+                        default=dbpaths['assone'],
+                        help="Specify the .fa file containing the sequence to be searched")
+    parser.add_argument("-p", "--pattern", type=str, dest="pattern",
+                        default='(?=([Gg][Gg].{18}.[Gg][Gg]))|(?=([Cc][Cc]..{18}[Cc][Cc]))',
+                        help="Specify the regular expression string to search with.")
+    parser.add_argument("-r", "--guide_rna", type=str,
+                        help="""Use a pre-defined guide RNA sequence:\nsx - short
+                        exogenous\nlx - long exogenous\nsn - short endogenous\nln -
+                        long endogenous""")
+    parser.add_argument("-o", "--output_file", type=str,
+                        help="Specify a file in which to save results.")
+    parser.add_argument("-g", "--gaps_allowed", type=int, dest="gaps_allowed", default=0,
+                        help="""Specify the number of gaps allowed in reported sequence
+                        matches.\nDefault = 0""")
+    parser.add_argument("-i", "--id_thresh", type=int,  default=18,
+                        help="Specify the minimum id to report in sequence matches.\nDefault = 18")
+    parser.add_argument("-t", "--threshold", type=int, dest="threshold", default=76,
+                        help="""Specify the minimum %%id to report in sequence matches.\n
+                        Default = 76""")
+    parser.add_argument("-x", "--exogenous", action='store_true',
+                        help="""Use if sequence is exogenous, to do second blast with GG
+                        added to seq.""")
     #parser.add_argument("fastq_dir", type=str, help="The directory containing all the fastq files for analysis.")
 
     args = parser.parse_args()
