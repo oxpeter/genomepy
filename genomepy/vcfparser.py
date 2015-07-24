@@ -15,7 +15,6 @@ import numpy
 from scipy import stats
 
 from genomepy import gffparser as gp
-import qvalue
 from genomepy import config
 
 ###### INITIALISE THE FILE PATHS NEEDED FOR ANALYSIS #######################
@@ -23,6 +22,38 @@ from genomepy import config
 dbpaths = config.import_paths()
 
 ########################################################################################
+
+def define_arguments():
+    parser = argparse.ArgumentParser(description=
+            "A module to perform a variety of gene term related analyses")
+
+    ### input options ###
+    # logging options:
+    parser.add_argument("-q", "--quiet", action='store_true',default=False,
+                        help="print fewer messages and output details")
+    parser.add_argument("-o", "--output", type=str, default='genematch.out',
+                        help="specify the filename to save results to")
+    parser.add_argument("-d", "--directory", type=str,
+                        help="specify the directory to save results to")
+
+    parser.add_argument('-v', "--vcf_file", type=str,
+                        help="The VCF file for parsing")
+    parser.add_argument("-C", "--cat", type=str, dest="category", default='DP4',
+                        help="Specify the category to parse")
+    parser.add_argument("-B", "--binomial_test", action='store_true',
+                        dest="binary", default=False,
+                        help="Perform binomial probability test of allele ratios")
+    parser.add_argument("-F", "--fishers_test", action='store_true',
+                        dest="fishers", default=False,
+                        help="Perform Fisher's Exact Test on allele ratios")
+    parser.add_argument("-r", "--ratios", type=str, dest="ratio_file", default=False,
+                        help="""second vcf file for comparing allele ratios using Fisher's
+                        Exact test\n(Requires vcf_results.list files)""")
+    parser.add_argument("-R", "--rootdir", type=str,
+                        help="""the base directory containing all bam files (can exist in
+                        subdirectories of this dir).""")
+
+    return parser
 
 def get_bamfiles(rootdir):
     """returns a list of non-discordant (ie proper_pair) bam files sorted as statary and
@@ -61,8 +92,6 @@ def create_vcf(filelist, assembly, outfile):
     os.system(cmd1)
     print "Running:\n%s" % cmd2
     os.system(cmd2)
-
-
 
 def parse_lines(category,filename):
     vcf_h = open(filename, 'rb')
@@ -141,41 +170,6 @@ def find_ratios(file1):
     file1_h.close()
     return snps
 
-def fdr_q(plist):
-    """ DEPRECATED: USE hicluster.p_to_q INSTEAD!
-    calculates the false discovery rate threshold for a list of p-values"""
-    m = len(plist)
-    plist.sort()
-
-    print "Min P-value: %e\nMax P-value: %e (%d tests)" % ( plist[0], plist[-1], m )
-
-    # calculate FDR:
-    maxp = -1
-    for j in range(m):
-        if plist[j] > j * 0.05 / m:
-            maxp = plist[j]
-            break
-    print "Q threshold = %e" % ( maxp )
-
-    return maxp
-
-def find_q(plist):
-    """ DEPRECATED: USE hicluster.p_to_q INSTEAD!
-    given (unsorted) list of p-values, returns dictionary of { p-value:q-value }"""
-
-    pv_array = numpy.array(sorted(plist))
-    qv_array = qvalue.estimate(pv_array)
-    print qv_array
-    qlist = list(qv_array)
-    qdict = dict(zip(plist, qlist))
-
-    # Fdict calculates expected number of false positives 'F' if the given q value is set
-    # as the threshold.  Fdict[q-value] = Expected False Positive Number
-    Fdict = {}
-    for q in qlist:
-        Fdict[q] = qlist.index(q) * q
-    return qdict, Fdict
-
 def critical_q(F_dict, crit=1):
     below = -10
     above = 1000000
@@ -202,7 +196,6 @@ def critical_q(F_dict, crit=1):
             print "q-value at which expected number of false positives is 1 is between %.4f (%.2f) and %.4f (%.2f)" % (belowq, below, aboveq, above)
             best_value = (aboveq + belowq) / 2
     return best_value
-
 
 def compare_allele_ratios_binomial(file1, file2, gff_obj, makeplot=False, min_depth=10 ):
     """compares the ratios of allele depths in two files. Alleles must be identical in
@@ -341,7 +334,6 @@ def compare_allele_ratios(file1, file2, gff_obj):
     plot_pvalues(plist)"""
     return all_loci
 
-
 def binary_out(all_loci, filename):
     """ Takes the significant loci from binary analysis and produces useful output files.
     """
@@ -441,7 +433,6 @@ def allele_specific_gene_expression(all_loci, filename, gff_obj):
     for geneid in FS_biased:
         print "Biased(two-ways): %-10s  %d\t%r" % (geneid, len(FS_biased[geneid]), FS_biased[geneid])
 
-
 def plot_pvalues(plist):
     x = range(len(plist))
     #plt.ylim(0,0.05)
@@ -454,16 +445,11 @@ def plot_pvalues(plist):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Parses VCF files. To perform allele ratio test, first run on each VCF file seperately.")
-    parser.add_argument('-v', "--vcf_file", type=str, help="The VCF file for parsing")
-    parser.add_argument("-C", "--cat", type=str, dest="category", default='DP4', help="Specify the category to parse")
-    parser.add_argument("-B", "--binomial_test", action='store_true', dest="binary", default=False, help="Perform binomial probability test of allele ratios")
-    parser.add_argument("-F", "--fishers_test", action='store_true', dest="fishers", default=False, help="Perform Fisher's Exact Test on allele ratios")
-    parser.add_argument("-r", "--ratios", type=str, dest="ratio_file", default=False, help="second vcf file for comparing allele ratios using Fisher's Exact test\n(Requires vcf_results.list files)")
-    parser.add_argument("-R", "--rootdir", type=str, help="the base directory containing all bam files (can exist in subdirectories of this dir).")
-    parser.add_argument("-o", "--outfile", type=str, default=os.getcwd() + '/outfile', help="the path of the vcf output file")
-
+    parser = define_arguments()
     args = parser.parse_args()
+
+    verbalise = config.check_verbose(not(args.quiet))
+    logfile = config.create_log(args, outdir=args.directory, outname=args.output)
 
     if args.rootdir:
         statbams, forgbams = get_bamfiles(args.rootdir)
@@ -475,8 +461,8 @@ if __name__ == '__main__':
     if args.ratio_file:
 
         ## create gff object for gene identification:
-        print "\nCreating gff object. Please wait a moment."
-        gff_obj = gp.assemble_dict(in_file="/Volumes/Genome/armyant.OGS.V1.8.6_lcl.gff", in_seq_file="/Volumes/Genome/Cbir.assembly.v3.0_gi.fa", features_only=False)
+        verbalise("B", "\nCreating gff object. Please wait a moment.")
+        gff_obj = gp.assemble_dict(in_file=dbpaths['gff'], in_seq_file=dbpaths['assgi'], features_only=False)
         print "gff object created.\n"
 
 
