@@ -6,6 +6,7 @@ import cPickle
 import re
 import os
 import datetime
+import random
 
 import argparse
 from BCBio import GFF
@@ -199,6 +200,203 @@ class Splicer(object):
         junc_h.close()
         return ccount, acount, rcount, ncount
 
+class GffFeature(object):
+    "a sub-element of a gff library"
+    def __init__(self, line="" ):
+        self.grandparent = None
+        self.parent = None
+        self.children = {}
+        self.grandchildren = {}
+
+        self.master = None  # currently, this is only for gene-level features
+
+        self.atts = parse_atts(line)
+        self.flds = parse_cols(line)
+
+        if self.flds:       # mark whether details were actually present to form feature
+            self.empty = False
+        else:
+            self.empty = True
+
+        try:
+            id = self.atts['ID']
+        except KeyError:
+            id = random.randint(1000000,9999999)
+        self.id = id
+
+    def __repr__(self):
+        return "%r %r %r" % (self.id, self.atts, self.flds)
+
+    def __str__(self):
+        try:
+            name = self.atts['Name']
+        except KeyError:
+            name = "---"
+        try:
+            gene = self.atts['gene']
+        except KeyError:
+            gene = "---"
+
+        if self.parent:
+            parent = self.parent
+        else:
+            parent = "---"
+        try:
+            ftype = self.fields['type']
+        except KeyError:
+            ftype = "---"
+
+        return "type:%s id:%s name:%s gene:%s parent:%s" % (ftype, self.id, name, gene, parent )
+
+
+class GffLibrary(object):
+    def __init__(self, gff_file):
+        # information on data source
+        self.gff_file = gff_file
+
+        # dictionaries to access subfeatures
+        self.featlib = {}   # lists partitioned according to feature type
+        self.scaflib = {}   # lists partitioned according to scaffold then feature type
+                            # (includes an 'all' category that contains everything)
+
+        self.namelib  = {}  # access subfeatures by subfeature name (LOC123, XP_1234, XM_1234)
+        self.idlib    = {}  # access subfeatures by subfeature id
+        self.locuslib = {}  # FUTURE: for possible faster searching by position?
+
+        handle = open(gff_file, 'rb')
+        for line in handle:
+            # create subfeature instance
+            subfeature = GffFeature(line)
+            if subfeature.empty:
+                continue
+
+            scaf = subfeature.flds['scaf']
+            ftype = subfeature.flds['type']
+
+            # assign subfeature to all Gff libraries
+            # featlib
+            if ftype in self.featlib:
+                self.featlib[ftype].append(subfeature)
+            else:
+                self.featlib[ftype] = [subfeature]
+
+            # scaflib
+            if scaf in self.scaflib:
+                if ftype in self.scaflib[scaf]:
+                    self.scaflib[scaf][ftype].append(subfeature)
+                    self.scaflib[scaf]['all'].append(subfeature)
+                else:
+                    self.scaflib[scaf][ftype] = [subfeature]
+                    self.scaflib[scaf]['all'].append(subfeature) # 'all' category already created
+            else:
+                self.scaflib[scaf]['all'] = [subfeature]
+                self.scaflib[scaf][ftype] = [subfeature]
+
+            # idlib
+            self.idlib[subfeature.id] = subfeature
+
+            # namelib
+            if 'Name' in subfeature.atts:
+                if  subfeature.atts['Name'] in self.name:
+                    self.namelib[subfeature.atts['Name']].append(subfeature)
+                else:
+                    self.namelib[subfeature.atts['Name']] = [subfeature]
+
+            # find parent and children subfeatures and connect them
+            if 'Parent' in subfeature.atts:
+                subfeature.parent = subfeature.atts['Parent']
+                self.idlib[subfeature.atts['Parent']].children[subfeature.id] = subfeature
+
+                if subfeature.parent.parent:
+                    subfeature.grandparent = subfeature.parent.parent
+                    subfeature.grandparent.grandchildren[subfeature.id] = subfeature
+
+    def __repr__(self):
+        return "%d features from library %r" % (len(self.idlib), self.gff_file)
+
+    def __str__(self):
+        ret_str = "[GFF LIBRARY]\nFrom file %s\n%s\nTotal features: %d"
+        return  ret_str % (os.path.basename(self.gff_file),
+                            "\n".join([ f + ": " + str(len(featlib[f])) for f in self.featlib ]),
+                            len(self.idlib))
+
+    def __contains__(self, item):
+        if item in self.namelib or item in self.idlib:
+            return True
+        else:
+            return False
+
+    def __len__(self):
+        return len(self.idlib)
+
+    def build_master_gene(self):
+        """
+        For each gene, extract all exons, merge overlapping exons, construct framework of
+        maximum bounds for each exon, assign exon number (5' to 3'). Add to master_gene
+        dic. This method does not alter any existing attributes of the gff instance
+        (unless the master_gene attribute had already been created).
+        """
+        mastercount = 0
+        for gene in self.featlib['gene']:
+
+            exons = []
+            for gc in gene.grandchildren.values():
+                if gc.flds['type'] == 'exon':
+                    exons += (gc.flds['start'], gc.flds['stop'], gc.flds['phase'])
+            exonlist = list(set(exons))
+
+            if len(exonlist) == 0:
+                continue
+
+            # create master overlapping exons:
+            while len(exonlist[0]) == 3:
+                newlists = [],[] # 1st list = non-overlapping exons, 2nd list = overlapping
+                for x in exonlist:
+                    newlists[overlaps(x, exonlist[0])].append(x)
+                all_positions = [xpos for tup in newlists[1] for xpos in tup[:2] ]
+                exonlist = newlists[0] + [(min(*all_positions), max(*all_positions))]
+
+            # FUTURE: rather than store as a list, create GffFeature instances for each
+            # master exon and store them instead.
+            gene.master = sorted([ x[:2] for x in exonlist ],
+                                        key=lambda i: i[0],
+                                        reverse=(not self.strandinfo[mrna]))
+            mastercount += 1
+        return mastercount
+
+    def findfeatures(self, locus, strand=['+','-'], ftype='all'):
+        """looks to see if locus is within features. Returns dictionary of all types
+        that contain the locus with lists of those feature instances.
+
+        this method replaces the old ingene and inexon methods, providing greater
+        specificity and flexibility.
+
+        OUTPUT from  ftype='all':
+        found['gene'] = [gene01]
+        found['mRNA'] = [rna01, rna02]
+        found['exon'] = [exon01, exon07]
+        found['CDS']  = [cds07]
+        """
+
+        scaf, posn = locus
+        found = {}
+        try:
+            for feat in self.scaflib[scaf][ftype]:
+                start = min(feat.flds['start'], feat.flds['end'])
+                end = max(feat.flds['start'], feat.flds['end'])
+
+                if feat.flds['strand'] in strand:
+                    if start <= posn <= end:
+                        if feat.flds['type'] in found:
+                            found[feat.flds['type']].append(feat)
+                        else:
+                            found[feat.flds['type']] = [feat]
+        except KeyError:
+            pass
+
+        return found
+
+
 
 class My_gff(object):
     "an object for quick assessment of where a GENE/SNP lies"
@@ -218,26 +416,42 @@ class My_gff(object):
         #                     this dic allows clustering of mRNAs into their corr. genes
         self.geneid = {}    # in case ID is not the primary identifier, to find parents
         self.mrna2gene = {} # allow identification of gene parent of an mRNA feature
+        self.id2gene = {}
+        self.id2rna = {}
         self.master = {}    # for storing master gene exon positions (ordered)
 
         gff_h = open(gff_file,'rb')
+        error_log = {}
         for line in gff_h:
             attr = parse_atts(line)
             fields = parse_cols(line)
+            if not fields:
+                continue
             start = fields['start']
             stop = fields['end']
-            pkey = attr[primary_key]
+            try:
+                pkey = attr[primary_key]
+            except KeyError:
+                if fields['type'] in error_log:
+                    error_log[fields['type']] += 1
+                else:
+                    error_log[fields['type']] = 1
+                continue
 
             if fields['type'] == 'gene':
-                try:
-                    self.toplevel[attr['Name']] = {"mRNA":[],
-                                                   "Longname":attr['gene'],
-                                                   "locus":attr['Name'],
-                                                   "ID":attr['ID'],
-                                                   "scaffold":fields['scaf'],
-                                                   }
-                except KeyError:
-                    self.toplevel[attr['Name']] = {"mRNA":[]}
+                self.toplevel[attr['Name']] = {}
+                for title, attribute in [("mRNA", []),
+                                        ('Longname', attr['gene']),
+                                        ('locus', attr['Name']),
+                                        ('ID', attr['ID']),
+                                        ('scaffold', fields['scaf']),
+                                        ]:
+
+                    try:
+                        self.toplevel[attr['Name']][title] = attribute
+
+                    except KeyError:
+                        continue
 
             if fields['type'] == 'mRNA':
                 self.featurecount += 1
@@ -275,6 +489,16 @@ class My_gff(object):
                     self.exondict[parentid].append((start, stop, fields['phase']))
                 else:
                     self.exondict[parentid] = [(start, stop, fields['phase'])]
+
+
+            ############## /\ /\ OLD VERSION /\ /\ #############################
+            ############## \/ \/ NEW VERSION \/ \/ #############################
+
+
+        if len(error_log) > 0:
+            print "%d feature%s could not be incorporated into gff:\n%s" % (len(error_log),
+                    's' if len(error_log)>1 else '',
+                    "\n".join([ i + ": " + str(error_log[i]) + " errors" for i in error_log ]))
 
     def __contains__(self, locus):
         "looks to see if locus is within gene. Does not consider introns/exons"
@@ -326,7 +550,7 @@ class My_gff(object):
                 all_positions = [xpos for tup in newlists[1] for xpos in tup[:2] ]
                 exonlist = newlists[0] + [(min(*all_positions), max(*all_positions))]
 
-            self.master[gene] =  sorted([ x[:2] for x in exonlist ],
+            self.master[gene] = sorted([ x[:2] for x in exonlist ],
                                         key=lambda i: i[0],
                                         reverse=(not self.strandinfo[mrna]))
 
@@ -383,34 +607,37 @@ class My_gff(object):
         """looks to see if locus is within gene. Does not consider introns/exons.
         If true, returns the gene name"""
         scaf, posn = locus
-        ingene = False
+        ingene = []
         try:
             for gene in self.genedict[scaf]:
                 if self.genedict[scaf][gene][0] <= posn <= self.genedict[scaf][gene][1]:
-                    ingene = gene
+                    ingene.append(gene)
         except KeyError:
-            ingene = None
+            ingene = []
 
         return ingene
 
-    def inexon(self, posn, locus, gene=False):
+    def inexon(self, locus, posn):
         """checks to see if position is in an exonic region.
         Can either give a scaf + posn (gene=False), and it will find if it's in a gene,
         and if it is, if it's in an exon. Or you can give a posn + gene (set gene=True),
         and it will quickly check if it's in the exon of that gene"""
-        if not gene: # first check to see if it's in a gene (and get that gene)
-            pkey = self.ingene((locus,posn))
-            if not pkey:
-                return False
+        if locus in self.geneid:
+            pkey = [locus]
         else:
-            pkey = locus
+            pkey = self.ingene((locus,posn))
+            if len(pkey) == 0:
+                return False
 
         # now we have the pkey...
-        for start, end in self.exondict[pkey]:
-            if start <= posn <= end:
-                return True
-        else:
-            return False
+        inexon = { i:None for i in pkey }
+        for g in pkey:
+            for exon in self.exondict[g]:
+                if min(exon) <= posn <= max(exon):
+                    inexon[g] = True
+            else:
+                inexon[g] = False
+        return inexon
 
     def closest_splice(self, locus, posn):
         closest_distance = None
@@ -423,6 +650,9 @@ class My_gff(object):
                 if abs(end - posn) < closest_distance:
                     closest_distance =  abs(end - posn)
         return closest_distance
+
+    def whichtranscript(self, locus):
+        pass
 
     def findnearest(self, scaffold, hitpos):
         """ looks for the nearest gene to a given locus """
@@ -570,10 +800,10 @@ def make_bed(gff_file, assembly_file=dbpaths['assone']):
     missing_dict = {}
     assembly_handle = open(assembly_file, 'r')
     for line in assembly_handle:
-        def_search = re.search('>(lcl\|[a-zC0-9]*)', line)
+        def_search = re.search('>(lcl\|)?([a-zC0-9]*)', line)
         line_len = len(line)
-        if def_search is not None:
-            scaf_id = def_search.groups()[0]
+        if def_search:
+            scaf_id = def_search.group(1)
         else:
             missing_dict[scaf_id] = line_len
 
@@ -1555,9 +1785,9 @@ if __name__ == '__main__':
     parser.add_argument("-g", "--gff_file", type=str, default=dbpaths['lclgff'],
                         help="GFF file for analyses")
     parser.add_argument("-f", "--genome_file", type=str, default=dbpaths['assgi'],
-                        help="Genome fasta file for analyses")
+                        help="Genome fasta file")
     parser.add_argument("-G", "--GO_file", type=str, default=dbpaths['goterms'],
-                        help="GO file for analyses")
+                        help=".list file containing GO terms for each gene")
     parser.add_argument("--show_go", action='store_true', default=False,
                         help="run GO analyses")
     parser.add_argument("-I", "--investigate", action='store_true',
@@ -1568,8 +1798,10 @@ if __name__ == '__main__':
                         help="perform methylation analysis")
     parser.add_argument("-S", "--splicing", type=str,
                         help="perform alternate splicing analysis on given file")
-    parser.add_argument("-B", "--bed2gtf", type=str,
+    parser.add_argument("--bed2gtf", type=str,
                         help="converts from bed to both ex.gff and gtf formats")
+    parser.add_argument("--gff2bed", action='store_true',
+                        help="converts from gff to bed format")
     parser.add_argument("-t", "--trim", type=str,
                         help="trims UTRs from gff file")
     parser.add_argument("-s", "--strip", type=str,
@@ -1613,7 +1845,8 @@ if __name__ == '__main__':
                 Total readjusted: %d (%.2f%%)\n\
                 Total novel:      %d (%.2f%%)" % (summatch, summatch/grandsum, sumalt, sumalt/grandsum, sumreadj, sumreadj/grandsum, sumnovel, sumnovel/grandsum))
 
-
+    if args.gff2bed:
+        make_bed(args.input, args.genome_file)
     if args.trim:
         trim_untranslated(args.trim)
     if args.bed2gtf:
