@@ -56,7 +56,11 @@ def read_pathways(config_file):
     # split each line into two (variable and path), if no comment symbol # is present:
     config_g = ( (line.split()[0], line.split()[1]) for line in config_h if re.search('#',line) == None)
     for fileid, pathway in config_g:
-        pathway_dict[fileid] = pathway
+        if resource_exists('genomepy', fileid + '.db'):
+            pathway_dict[fileid] = resource_filename('genomepy',
+                                                os.path.join(['data/', fileid, '.db']))
+        else:
+            pathway_dict[fileid] = pathway
     return pathway_dict
 
 def write_config(pathway_dict, config_file):
@@ -69,22 +73,28 @@ def find_files():
     "creates a list of all potentially needed database file paths"
     pathway_dict = {}
     # find the directories containing the OGS and ortholog files:
-    cmd1 = [ 'find', os.sep.join(['','home','antqueen','genomics','genomes']), '-type', 'd', '-iname', '*C.bir*', '-print' ]
-    cmd2 = [ 'find', os.sep.join(['','Volumes','antqueen','genomics','genomes']), '-type', 'd', '-iname', '*C.bir*', '-print' ]
-    cmd3 = [ 'find', os.sep.join(['','home','antqueen','genomics','experiments','analyses','BGI20120208_Genome']), '-type', 'd', '-iname', '*_o*', '-print' ]
-    cmd4 = [ 'find', os.sep.join(['','Volumes','antqueen','genomics','experiments','analyses','BGI20120208_Genome']), '-type', 'd', '-iname', '*_o*', '-print' ]
+    cmd1 = [ 'find', os.sep.join(['','home']),
+                '-type', 'd',
+                '-iname', '*C.bir*', '-o',
+                '-iname', '*kegg*', '-o',
+                '-name',  '*GO*list',
+                '-print' ]
+    cmd2 = [ 'find', os.sep.join(['','Volumes']),
+                '-type', 'd',
+                '-iname', '*C.bir*', '-o',
+                '-iname', '*kegg*', '-o',
+                '-name',  '*GO*list',
+                '-print' ]
+
     # collect output of commands:
     out1_h = Popen(cmd1, stdout=PIPE)
     out2_h = Popen(cmd2, stdout=PIPE)
-    out3_h = Popen(cmd3, stdout=PIPE)
-    out4_h = Popen(cmd4, stdout=PIPE)
+
     # parse output into a list:
     out1 = re.findall("([^\\n]*)\\n", out1_h.communicate()[0])
     out2 = re.findall("([^\\n]*)\\n", out2_h.communicate()[0])
-    out3 = re.findall("([^\\n]*)\\n", out3_h.communicate()[0])
-    out4 = re.findall("([^\\n]*)\\n", out4_h.communicate()[0])
     filingcabinet = []
-    for path in out1 + out2 + out3 + out4: # check each result
+    for path in out1 + out2: # check each result
         if os.path.exists(path):    # removes any blank find results
             ls_h = Popen([ 'ls', path ], stdout=PIPE)
             # create a list of all visible filenames in the directory
@@ -99,9 +109,9 @@ def find_latest(filelist, seqtype, fextension):
     shortlist = []
     for filename in filelist:
         pattern = '(' + seqtype + ')\.[Vv]?([0-9]*\.[0-9]*\.?[0-9]*)[\._]?(' + fextension + ')$'
-        handle = re.search( pattern, filename )
-        if handle is not None:
-            version = handle.group(2)
+        search_result = re.search( pattern, filename )
+        if search_result:
+            version = search_result.group(2)
             shortlist.append((version,filename))
     if len(shortlist) == 0:
         shortlist = [("","Not_found")]
@@ -124,6 +134,10 @@ def construct_pathways(config_file):
     pathway_dict['goterms'] = find_latest(filelist, 'OGS', 'GOterms.list')
     pathway_dict['ncbipep'] = find_latest(filelist, 'OGS', 'ncbi.annotated.pep')
     pathway_dict['iprlist'] = find_latest(filelist, 'iprscan', 'gene.list')
+    pathway_dict['obo'] = find_latest(filelist, 'go', 'obo')
+    pathway_dict['kegg'] = find_latest(filelist, 'kegg', 'list')
+    pathway_dict['blastnuc'] = "" # folder of blast db for nucleotides
+    pathway_dict['blastpep'] = "" # folder of blast db for protein
     # get files for other purposes:
     kegg_patt = '1\.keg'
     kegg_convert_patt = 'KEGG_orthologs.list'
@@ -163,7 +177,16 @@ def import_paths():
     if config_exists:
         pathway_dict = read_pathways(config_path)
     else:
-        pathway_dict = construct_pathways(config_path)
+        if check_overwrite("pathways.cfg not found. Would you like to build it?"):
+            pathway_dict = construct_pathways(config_path)
+        else:
+            pathway_dict = {'gff':"",       'cds':"",       'pep':"",
+                            'gtf':"",       'lclgff':"",
+                            'ass':"",       'assgi':"",     'assone':"",
+                            'goterms':"",   'obo':"",
+                            'ncbipep':"",   'iprlist':"",
+                            'kegg':"",
+                            'blastnuc':"", 'blastpep':"",}
     return pathway_dict
 
 
@@ -244,8 +267,8 @@ def file_block(filehandle,  block, number_of_blocks=1000):
     while filehandle.tell() < end:
         yield filehandle.readline()
 
-def check_overwrite():
-    answer = raw_input("File exists! Do you want to overwrite? [Y/N]\n")
+def check_overwrite(message="File exists! Do you want to overwrite? [Y/N]\n"):
+    answer = raw_input(message)
     if answer.upper() in ["Y", "YES"]:
         return True
     else:
