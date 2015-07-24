@@ -133,7 +133,7 @@ def create_pcr_product(filename):
     fasta_handle.close()
     newfile_handle.close()
 
-def run_radsat():
+def run_radsat(gtypefile="No_solitary_loh.PILSIP.iGTYPES.gtype"):
     cmmd, filename = sys.argv
     msats = upload_msats(filename)
 
@@ -147,8 +147,8 @@ def run_radsat():
         msat = msats[msat_key]
         print "creating Radsats for msat", msat
 
-        gtobj = open("/Volumes/Genome/RAD-Tags/Final_Analysis/No_solitary_loh.PILSIP.iGTYPES.gtype", 'rb')
-        #gtobj = open("/Volumes/Genome/RAD-Tags/Final_Analysis/No_solitary_loh.PILSIP.aGTYPES.gtype", 'rb')
+        gtobj = open(gtypefile, 'rb')
+
         gtgen = [ line.split() for line in gtobj if line.split()[5] >= 10 and line.split()[6] >= 10 ]
         gtobj.close()
 
