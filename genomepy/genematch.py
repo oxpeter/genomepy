@@ -7,7 +7,6 @@ import os
 import sys
 import re
 import argparse
-from pkg_resources import resource_filename, resource_exists
 import random
 
 import numpy as np
@@ -530,12 +529,18 @@ def gff_init():
     """ To speed up gene matching, this will create a gff dictionary """
     pass
 
-def extract_promoter():
+def extract_promoter(promoterfile, supergenomefasta):
     """
     # To extract Vg promoters from all ants, I used the following under __main__:
+
+    Filename has following format:
+    gene        sp      scaffold        std Start   Stop
+    Acep_Vgw2	Acep	scaffold00004	-	3174479	3175079
+    Acep_Vgw1	Acep	scaffold00004	-	3190854	3191454
+
     """
-    filename = "/Users/POxley/Documents/Analysis/Data/Genes/Vg/Vg_promoters.info"
-    file_h = open(filename, 'rb')
+
+    file_h = open(promoterfile, 'rb')
     results_dict = {}
     file_h.next()
     for line in file_h:
@@ -549,9 +554,10 @@ def extract_promoter():
 
         # to search the concatenated genome file, need to add spp to scaffold name:
         defcheck = spp + "_" + scaf
-        sequence = extractseq(defcheck, type='fa', OGS='/Volumes/Genome/Ant_Genomes/EightAntGenomes', startpos=startpos, endpos=endpos)
+        sequence = extractseq(defcheck, type='fa',
+                OGS=supergenomefasta,
+                startpos=startpos, endpos=endpos)
         #defcheck = spp + "_" + scaf
-        #sequence = extractseq(defcheck, type='fa', OGS='/Volumes/Genome/Non-ant_genomes/Hymen.N.vit.genome', startpos=startpos, endpos=endpos)
 
         # if polarity is -ve, create reverse complement:
         if polarity == '-':
@@ -1122,28 +1128,6 @@ def randBinList(n):
     return  [random.randint(0,1) for b in range(0,n)]
 
 ########################################################################
-def mainprog():
-    cmmd, fname  = sys.argv
-
-    cuffgenes = findgene(fname)
-    print "Number of results:", len(cuffgenes)
-
-    cbgenelist = []
-    for result in cuffgenes:
-        #print "Gene: %s Expr: %.3f\t%.3f\t%.3f\t(%s:%d-%d)" % (cuffgenes[result][0], cuffgenes[result][4], cuffgenes[result][5], cuffgenes[result][6], cuffgenes[result][1], cuffgenes[result][2], cuffgenes[result][3])
-        #print cuffgenes[result][0]
-        cbgenelist.append(cuffgenes[result][0])
-    flylogs = fly_orthologs(cbgenelist)
-    for gene in flylogs:
-        print flylogs[gene]
-
-    Cbi2 = extractseq('scaffold176',type='fa', OGS=dbpaths['ass'][:-3], startpos=92000, endpos=96000)
-    Cbi3 = extractseq('scaffold197',type='fa', OGS=dbpaths['ass'][:-3], startpos=1552000, endpos=1557000)
-    Cbi6 = extractseq('scaffold314',type='fa', OGS=dbpaths['ass'][:-3], startpos=347000, endpos=352000)
-    crispr_f = '/Volumes/Genome/CRISPR/mini_genome.fa'
-    crispr_h = open(crispr_f, 'w')
-    crispr_h.write( ">scaf176 Cbi2\n%s\n>scaf197 Cbi3\n%s\n>scaf314 Cbi6\n%s\n" % (Cbi2, Cbi3, Cbi6) )
-    crispr_h.close()
 
 if __name__ == '__main__':
     parser = define_arguments()
