@@ -138,6 +138,36 @@ def construct_pathways(config_file):
     pathway_dict['kegg'] = find_latest(filelist, 'kegg', 'list')
     pathway_dict['blastnuc'] = "" # folder of blast db for nucleotides
     pathway_dict['blastpep'] = "" # folder of blast db for protein
+    pathway_dic['assncbi'] = ""
+    pathway_dict["Ador_lpep"] = ""
+    pathway_dict["Aech_lpep"] = ""
+    pathway_dict["Aflo_lpep"] = ""
+    pathway_dict["Amel_lpep"] = ""
+    pathway_dict["Apis_lpep"] = ""
+    pathway_dict["Aros_lpep"] = ""
+    pathway_dict["Bimp_lpep"] = ""
+    pathway_dict["Bmor_lpep"] = ""
+    pathway_dict["Bter_lpep"] = ""
+    pathway_dict["Cbir_lpep"] = ""
+    pathway_dict["Cele_lpep"] = ""
+    pathway_dict["Cflo_lpep"] = ""
+    pathway_dict["Csol_lpep"] = ""
+    pathway_dict["Dcit_lpep"] = ""
+    pathway_dict["Dmel_lpep"] = ""
+    pathway_dict["Ebur_lpep"] = ""
+    pathway_dict["Fari_lpep"] = ""
+    pathway_dict["Hsal_lpep"] = ""
+    pathway_dict["Lhum_lpep"] = ""
+    pathway_dict["Mdem_lpep"] = ""
+    pathway_dict["Mpha_lpep"] = ""
+    pathway_dict["Mrot_lpep"] = ""
+    pathway_dict["Nvit_lpep"] = ""
+    pathway_dict["Oabi_lpep"] = ""
+    pathway_dict["Pbar_lpep"] = ""
+    pathway_dict["Pcan_lpep"] = ""
+    pathway_dict["Sinv_lpep"] = ""
+    pathway_dict["Tcas_lpep"] = ""
+    pathway_dict["Waur_lpep"] = ""
     # get files for other purposes:
     kegg_patt = '1\.keg'
     kegg_convert_patt = 'KEGG_orthologs.list'
@@ -182,11 +212,42 @@ def import_paths():
         else:
             pathway_dict = {'gff':"",       'cds':"",       'pep':"",
                             'gtf':"",       'lclgff':"",
-                            'ass':"",       'assgi':"",     'assone':"",
+                            'ass':"",       'assgi':"",
+                            'assone':"",    'assncbi':"",
                             'goterms':"",   'obo':"",
                             'ncbipep':"",   'iprlist':"",
                             'kegg':"",
-                            'blastnuc':"", 'blastpep':"",}
+                            'blastnuc':"", 'blastpep':"",
+                            "Ador_lpep": "",
+                            "Aech_lpep": "",
+                            "Aflo_lpep": "",
+                            "Amel_lpep": "",
+                            "Apis_lpep": "",
+                            "Aros_lpep": "",
+                            "Bimp_lpep": "",
+                            "Bmor_lpep": "",
+                            "Bter_lpep": "",
+                            "Cbir_lpep": "",
+                            "Cele_lpep": "",
+                            "Cflo_lpep": "",
+                            "Csol_lpep": "",
+                            "Dcit_lpep": "",
+                            "Dmel_lpep": "",
+                            "Ebur_lpep": "",
+                            "Fari_lpep": "",
+                            "Hsal_lpep": "",
+                            "Lhum_lpep": "",
+                            "Mdem_lpep": "",
+                            "Mpha_lpep": "",
+                            "Mrot_lpep": "",
+                            "Nvit_lpep": "",
+                            "Oabi_lpep": "",
+                            "Pbar_lpep": "",
+                            "Pcan_lpep": "",
+                            "Sinv_lpep": "",
+                            "Tcas_lpep": "",
+                            "Waur_lpep": "",}
+
     return pathway_dict
 
 
@@ -310,35 +371,34 @@ def create_log(args, outdir=None, outname='results'):
     return filename
 
 def make_a_list(geneobj, col_num=0, readfile=True):
-    """given a path, list, dictionary or string, convert into a list of genes.
-    col_num specifies the column from which to extract the gene list from."""
+    """
+    given a path, list, dictionary or string, convert into a list of genes.
+    col_num specifies the column from which to extract the gene list from.
 
-    # genefile can be given as a list of genes (say, from find_degs()... ), or as
-    # a path to a file containing a list of genes.
-    # The following builds a dictionary of genes from either input:
-    if type(geneobj) is list:   # allows filtering from hicluster generated list of results.
+    genefile can be given as a list of genes (say, from find_degs()... ), or as
+    a path to a file containing a list of genes.
+    The following builds a dictionary of genes from either input
+    genelist will be a dict of names { 'Cbir01255':1, 'CbirVgq':1, ... }
+    """
+
+    if type(geneobj) is list:
         genelist = {}.fromkeys(geneobj,1)
     elif type(geneobj) is dict:
-        genelist = geneobj # this of course will only work if the keys are the genes!
-    elif type(geneobj) is str:   # assuming a filepath...
-        if re.search("/",geneobj) is None:
+        genelist = geneobj
+    elif type(geneobj) is str:
+        if os.path.exists(geneobj) or not readfile: # can turn off file reading
+            genefile_h = open(geneobj, 'rb')
+            genelist = {}
+            filegen = [ line.split() for line in genefile_h if len(line) > 0]
+            genefile_h.close()
+
+            for colset in filegen:
+                try:
+                    genelist[colset[col_num]]=1
+                except IndexError:
+                    verbalise("R", "Column %d not found in %s" % (col_num, str(colset)))
+        else:
             genelist = {}.fromkeys(geneobj.split(','),1)
-        else:   # is a file path
-            if re.search(",",geneobj) or not readfile: # can turn of so that a single file path is returned as the string
-                genelist = {}.fromkeys(geneobj.split(','),1)
-            else:
-                genefile_h = open(geneobj, 'rb')
-                genelist = {}   # will be a dict of names { 'Cbir01255':1, 'CbirVgq':1, ... }
-                                # used a dictionary to automatically remove any name duplications
-                filegen = [ line.split() for line in genefile_h if len(line) > 0]
-
-                genefile_h.close()
-
-                for colset in filegen:
-                    try:
-                        genelist[colset[col_num]]=1
-                    except IndexError:
-                        verbalise("R", "Column %d not found in %s" % (col_num, str(colset)))
     else:
         genelist = {}
 
