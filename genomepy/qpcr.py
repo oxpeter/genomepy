@@ -4,6 +4,7 @@
 import os
 import argparse
 import re
+import datetime
 
 from Bio.Seq import Seq
 from Bio.Alphabet import generic_dna, IUPAC
@@ -11,15 +12,35 @@ import progressbar
 
 from genomepy import genematch, gffparser, cris, config
 
-###### INITIALISE THE FILE PATHS NEEDED FOR ANALYSIS #######################
-
-dbpaths = config.import_paths()
-
 ################################################################
+def define_arguments():
+    parser = argparse.ArgumentParser(description="Creates qPCR appropriate primers from a list of genes")
+    ## admin functions:
+    parser.add_argument("-q", "--quiet", action='store_true',default=False,
+                        help="print fewer messages and output details")
+    parser.add_argument("-o", "--output", type=str, default='qpcr.out',
+                        help="specify the filename to save results to")
+    parser.add_argument("-d", "--directory", type=str,
+                        help="specify the directory to save results to")
+    parser.add_argument("-D", "--display_on", action='store_true',default=False,
+                        help="display graph results (eg for p value calculation)")
 
-def get_genelist(input_file):
-    genelist = [line.split()[0] for line in open(input_file)]
-    return genelist
+    ## input options:
+    parser.add_argument("-i", "--gene_list", type=str,
+                        help="""List of genes to design primers for. Can be a
+                        comma-delimited list, or the path to a file containing gene names
+                        in the first column.""")
+    parser.add_argument("-g", "--gff_file", type=str, default=dbpaths['gff'],
+                        help="GFF file for analyses")
+    parser.add_argument("-a", "--assembly_file", type=str, default=dbpaths['ass'],
+                        help="genome fasta file")
+    parser.add_argument("-c", "--cds_file", type=str, default=dbpaths['cds'],
+                        help="Fasta file of coding sequences")
+    parser.add_argument("-P", "--PCR", type=str,
+                        help="""file containing primer pairs for analysis (not yet
+                        implemented""")
+
+    return parser
 
 def check_PCR(primer1, primer2, gffobj, pcr_name="C_biroi", outputfile="~/tempfile", id_thresh=16, gap_thresh=1):
     """creates pseudo PCR product from primers, and blasts C.biroi to look for multiple
@@ -78,26 +99,41 @@ def parse_fold(fold_output):
     out_h.close()
 
 
-def main(args):
-    genelist = get_genelist(args.input_file)
+def main(args, logfile):
+    genelist = config.make_a_list(args.gene_list)
     print "\nCreating genome parsing objects..."
     gffobj = gffparser.assemble_dict()
+    verbalise("B", "Assembling gff file...")
     quickinfo = gffparser.My_gff()
+
+    gfflib = gffparser.GffLibrary(args.gff_file, args.assembly_file)
 
     # create output file (input file of primer3), in case of previous existence
     # NB: will overwrite existing file!!!
-    p3_input = args.output_file + ".p3_input.txt"
+    p3_input = logfile[:-3] + "p3_input.txt"
     p3_h = open(p3_input, 'w')
     p3_h.close()
 
     cumcount = 0
     for geneid in genelist:
         ## get sequence:
-        seq = genematch.extractseq(geneid,type='cds')
+        #seq = genematch.extractseq(geneid)
+        seq = gfflib.extractseq(geneid, cds=True)
+        boundaries = gfflib.cds_boundaries(geneid) # this is a dictionary
+        for isoform in boundaries:
+            cumlen = 0
+            exon_boundaries = []
+            for xlen in boundaries[isoform]:
+                cumlen += xlen
+                exon_boundaries.append(cumlen)
+        # current setting therefore only designs primers for the last isoform!
+
+        """
         ## find exon boundaries:
         scaf = quickinfo.whichscaf(geneid)
         exon_details = [ subfeat.location  for feature in gffobj[scaf].features for subfeat in feature.sub_features if feature.qualifiers['ID'][0] == geneid ]
         exon_order = []
+
         # sort the exon lengths according to position and strand orientation:
         for exon in exon_details:
             exon_order.append((len(exon), exon.start))
@@ -107,19 +143,24 @@ def main(args):
                 qrev = False
         exon_order.sort(key=lambda posn: posn[1], reverse=qrev)
         exon_boundaries = []
+
         # create exon boundary relative positions by cumulative addition:
         cumlen = 0
         for length,posn in exon_order:
             cumlen += length
             exon_boundaries.append(cumlen)
+        """
+
+
         print "preparing %s for primer design" % (geneid)
         count = 1
+
         for boundary in exon_boundaries[:-1]:
             # format for primer3 input file:
             input_txt = "SEQUENCE_ID=%s_exon%d\n" % (geneid, count) + \
             "SEQUENCE_TEMPLATE=%s\n" % (seq) + \
             "SEQUENCE_TARGET=%d,2\n" % (boundary) +\
-            "PRIMER_THERMODYNAMIC_PARAMETERS_PATH=/Users/POxley/apps/primer3-2.3.6/primer3_config/\n" + \
+            "PRIMER_THERMODYNAMIC_PARAMETERS_PATH=/home/peter/lib/primer3_config/\n" + \
             "PRIMER_TASK=generic\n" + \
             "PRIMER_PICK_LEFT_PRIMER=1\n" + \
             "PRIMER_PICK_INTERNAL_OLIGO=0\n" + \
@@ -149,7 +190,7 @@ def main(args):
 
     ## run primer3:
     #print "Running primer3 on %d exon boundaries" % (cumcount)
-    p3_out = args.output_file + ".p3_out.info"
+    p3_out = logfile[:-3] + "p3_out.info"
     cmd = "primer3_core -format_output -output=%s %s" % (p3_out, p3_input)
     os.system(cmd)
 
@@ -158,15 +199,18 @@ def main(args):
     print "\nAnalysing ~%d primer pairs:" % (cumcount * 5)
 
     p3_gen = parse_p3(p3_out)
-    bar = progressbar.ProgressBar(maxval=cumcount*5, \
-    widgets=[progressbar.Bar('=', '[', ']'), ' ', progressbar.ETA()])
+
+
+    #bar = progressbar.ProgressBar(maxval=cumcount*5, \
+    #widgets=[progressbar.Bar('=', '[', ']'), ' ', progressbar.ETA()])
     count=0
-    bar.update(count)
+    t0 = datetime.datetime.now()
+    #bar.update(count)
     for name, primer1, primer2, start, finish in p3_gen:
         count += 1
         #print "Processing primer pair for %s" % (name)
         # blast primer pair:
-        blastout = args.output_file + ".".join(["", name, primer1, 'blastn'])
+        blastout = logfile[:-3] + ".".join([name, primer1, 'blastn'])
         check_PCR(primer1, primer2, pcr_name=name, outputfile=blastout, gffobj=quickinfo)
 
         ## check blastn output for viable PCR products:
@@ -178,15 +222,27 @@ def main(args):
         # extract PCR product and save to fasta file:
         geneid = re.search("(.*)_exon", name).group(1)
         pcr_seq = genematch.extractseq(geneid, type='cds', startpos=start , endpos=finish )
-        fastafile = args.output_file + '.fa'
+        fastafile = logfile[:-3] + 'fa'
         defline = " ".join([name, primer1, primer2])
         cris.make_fasta(pcr_seq, seqnames=defline, outpath=fastafile, append='a')
-        bar.update(count)
-    bar.finish()
+
+        # calculate time left:
+        t1 = datetime.datetime.now()
+        tdiff = (t1-t0)
+        trate = tdiff / count
+        tleft = trate * cumcount * 5 - tdiff
+
+        os.system.write("\rAnalysed %d/%d (%.2f%%) pairs. Approx %s remaining         \r" % (count,
+                                                        cumcount * 5,
+                                                        100.0 * count / (cumcount * 5),
+                                                        tleft ))
+        os.system.flush()
+        #bar.update(count)
+    #bar.finish()
 
     ## run VIENNA RNAfold to check tertiary structure
     print "Running RNAfold..."
-    viennaout = args.output_file + ".RNAfold.info"
+    viennaout = args.output + ".RNAfold.info"
     cmd = "RNAfold -p -d2 --noLP -T 60 < " + fastafile + " > " + viennaout
     os.system(cmd)
 
@@ -197,20 +253,16 @@ def main(args):
 ################################################################
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Creates qPCR appropriate primers from a list of genes")
-    parser.add_argument("-o", "--output_file", type=str, default="p3_output.info",
-                        help="File to save results to")
-    parser.add_argument("-i", "--input_file", type=str,  help="File to analyse")
-    parser.add_argument("-g", "--gff_file", type=str, default=dbpaths['gff'],
-                        help="GFF file for analyses")
-    parser.add_argument("-c", "--cds_file", type=str, default=dbpaths['cds'],
-                        help="Genome fasta file for analyses")
-    parser.add_argument("-P", "--PCR", type=str,
-                        help="file containing primer pairs for analysis")
+
+    dbpaths = config.import_paths()
+
+    parser = define_arguments()
     args = parser.parse_args()
 
+    verbalise = config.check_verbose(not(args.quiet))
+    logfile = config.create_log(args, outdir=args.directory, outname=args.output)
 
     if args.PCR:
         pass
     else:
-        main(args)
+        main(args, logfile)
