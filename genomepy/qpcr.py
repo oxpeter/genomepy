@@ -48,10 +48,12 @@ def check_PCR(primer1, primer2, gffobj, pcr_name="C_biroi", outputfile="~/tempfi
     primer1_seq = Seq(primer1, generic_dna)
     primer2_seq = Seq(primer2, generic_dna).reverse_complement()
     PCR_product = primer1_seq + Seq("NNNNNNNNNNNNNNNNNNNNNNNNNNNNNN", generic_dna) + primer2_seq
+    pcr_input_file = outputfile + ".pcr_product_input.tmp"
 
     # blast C. biroi genome with PCR_product:
     outfile = outputfile + ".blastout.tmp"
-    cris.blastseq(PCR_product, seqnames=pcr_name, outpath=outfile, outfmt='crisprtab')
+    cris.blastseq(PCR_product, seqnames=pcr_name, inpath=pcr_input_file,
+                    outpath=outfile, outfmt='crisprtab')
     blast_dict = cris.parse_crispr_blast(
                         outfile,
                         gffobj,
@@ -101,8 +103,8 @@ def parse_fold(fold_output):
 
 def main(args, logfile):
     genelist = config.make_a_list(args.gene_list)
-    print "\nCreating genome parsing objects..."
-    gffobj = gffparser.assemble_dict()
+    #print "\nCreating genome parsing objects..."
+    #gffobj = gffparser.assemble_dict()
     verbalise("B", "Assembling gff file...")
     quickinfo = gffparser.My_gff()
 
@@ -118,75 +120,53 @@ def main(args, logfile):
     for geneid in genelist:
         ## get sequence:
         #seq = genematch.extractseq(geneid)
-        seq = gfflib.extractseq(geneid, cds=True)
-        boundaries = gfflib.cds_boundaries(geneid) # this is a dictionary
+        isoseqs = gfflib.extractseq(geneid, cds=True)
+        boundaries = gfflib.extractseq(geneid, boundaries=True) # this is a dictionary
+        exon_boundaries = {}
         for isoform in boundaries:
             cumlen = 0
-            exon_boundaries = []
+            exon_boundaries[isoform] = []
             for xlen in boundaries[isoform]:
                 cumlen += xlen
-                exon_boundaries.append(cumlen)
-        # current setting therefore only designs primers for the last isoform!
+                exon_boundaries[isoform].append(cumlen)
 
-        """
-        ## find exon boundaries:
-        scaf = quickinfo.whichscaf(geneid)
-        exon_details = [ subfeat.location  for feature in gffobj[scaf].features for subfeat in feature.sub_features if feature.qualifiers['ID'][0] == geneid ]
-        exon_order = []
+        for isoform in isoseqs:
 
-        # sort the exon lengths according to position and strand orientation:
-        for exon in exon_details:
-            exon_order.append((len(exon), exon.start))
-            if exon.strand == -1:
-                qrev = True
-            else:
-                qrev = False
-        exon_order.sort(key=lambda posn: posn[1], reverse=qrev)
-        exon_boundaries = []
+            verbalise("B", "preparing %s for primer design (%s)" % (isoform, geneid))
+            count = 1
 
-        # create exon boundary relative positions by cumulative addition:
-        cumlen = 0
-        for length,posn in exon_order:
-            cumlen += length
-            exon_boundaries.append(cumlen)
-        """
-
-
-        print "preparing %s for primer design" % (geneid)
-        count = 1
-
-        for boundary in exon_boundaries[:-1]:
-            # format for primer3 input file:
-            input_txt = "SEQUENCE_ID=%s_exon%d\n" % (geneid, count) + \
-            "SEQUENCE_TEMPLATE=%s\n" % (seq) + \
-            "SEQUENCE_TARGET=%d,2\n" % (boundary) +\
-            "PRIMER_THERMODYNAMIC_PARAMETERS_PATH=/home/peter/lib/primer3_config/\n" + \
-            "PRIMER_TASK=generic\n" + \
-            "PRIMER_PICK_LEFT_PRIMER=1\n" + \
-            "PRIMER_PICK_INTERNAL_OLIGO=0\n" + \
-            "PRIMER_PICK_RIGHT_PRIMER=1\n" + \
-            "PRIMER_OPT_SIZE=20\n" + \
-            "PRIMER_MIN_SIZE=18\n" + \
-            "PRIMER_MAX_SIZE=22\n" + \
-            "PRIMER_MAX_NS_ACCEPTED=0\n" + \
-            "PRIMER_PRODUCT_SIZE_RANGE=50-150\n" + \
-            "P3_FILE_FLAG=0\n" + \
-            "PRIMER_PAIR_MAX_DIFF_TM=1.0\n" + \
-            "PRIMER_EXPLAIN_FLAG=1\n" + \
-            "PRIMER_OPT_TM=60\n" + \
-            "PRIMER_MAX_TM=60\n" + \
-            "PRIMER_MIN_TM=58\n" + \
-            "PRIMER_MAX_END_GC=2\n" + \
-            "=\n"
+            for boundary in exon_boundaries[isoform][:-1]:
+                # format for primer3 input file:
+                input_txt = "SEQUENCE_ID=%s_exon%d\n" % (geneid, count) + \
+                "SEQUENCE_TEMPLATE=%s\n" % (isoseqs[isoform]) + \
+                "SEQUENCE_TARGET=%d,2\n" % (boundary) +\
+                "PRIMER_THERMODYNAMIC_PARAMETERS_PATH=/home/peter/lib/primer3_config/\n" + \
+                "PRIMER_TASK=generic\n" + \
+                "PRIMER_PICK_LEFT_PRIMER=1\n" + \
+                "PRIMER_PICK_INTERNAL_OLIGO=0\n" + \
+                "PRIMER_PICK_RIGHT_PRIMER=1\n" + \
+                "PRIMER_OPT_SIZE=20\n" + \
+                "PRIMER_MIN_SIZE=18\n" + \
+                "PRIMER_MAX_SIZE=22\n" + \
+                "PRIMER_MAX_NS_ACCEPTED=0\n" + \
+                "PRIMER_PRODUCT_SIZE_RANGE=50-150\n" + \
+                "P3_FILE_FLAG=0\n" + \
+                "PRIMER_PAIR_MAX_DIFF_TM=1.0\n" + \
+                "PRIMER_EXPLAIN_FLAG=1\n" + \
+                "PRIMER_OPT_TM=60\n" + \
+                "PRIMER_MAX_TM=60\n" + \
+                "PRIMER_MIN_TM=58\n" + \
+                "PRIMER_MAX_END_GC=2\n" + \
+                "=\n"
 
 
-            # append to primer3 input file:
-            p3_h = open(p3_input, 'a')
-            p3_h.write(input_txt)
-            p3_h.close()
+                # append to primer3 input file:
+                p3_h = open(p3_input, 'a')
+                p3_h.write(input_txt)
+                p3_h.close()
 
-            count += 1
-            cumcount += 1
+                count += 1
+                cumcount += 1
 
     ## run primer3:
     #print "Running primer3 on %d exon boundaries" % (cumcount)
@@ -211,7 +191,7 @@ def main(args, logfile):
         #print "Processing primer pair for %s" % (name)
         # blast primer pair:
         blastout = logfile[:-3] + ".".join([name, primer1, 'blastn'])
-        check_PCR(primer1, primer2, pcr_name=name, outputfile=blastout, gffobj=quickinfo)
+        check_PCR(primer1, primer2, pcr_name=name, outputfile=blastout, gffobj=gfflib)
 
         ## check blastn output for viable PCR products:
         #hitnumber, hitseq = cris.showblast(filename=blastout + ".blastout.tmp", \
