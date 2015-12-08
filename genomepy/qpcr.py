@@ -2,6 +2,7 @@
 """ A module for developing appropriate qPCR primers for a given gene"""
 
 import os
+import sys
 import argparse
 import re
 import datetime
@@ -201,7 +202,8 @@ def main(args, logfile):
         # prepare to check for tertiary structure:
         # extract PCR product and save to fasta file:
         geneid = re.search("(.*)_exon", name).group(1)
-        pcr_seq = genematch.extractseq(geneid, type='cds', startpos=start , endpos=finish )
+        pcr_seq_dic = gfflib.extractseq(geneid, cds=True, trim_from=start , trim_to=finish )
+        pcr_seq = pcr_seq_dic[isoform]
         fastafile = logfile[:-3] + 'fa'
         defline = " ".join([name, primer1, primer2])
         cris.make_fasta(pcr_seq, seqnames=defline, outpath=fastafile, append='a')
@@ -212,11 +214,11 @@ def main(args, logfile):
         trate = tdiff / count
         tleft = trate * cumcount * 5 - tdiff
 
-        os.system.write("\rAnalysed %d/%d (%.2f%%) pairs. Approx %s remaining         \r" % (count,
+        sys.stdout.write("\rAnalysed %d/%d (%.2f%%) pairs. Approx %s remaining         \r" % (count,
                                                         cumcount * 5,
                                                         100.0 * count / (cumcount * 5),
                                                         tleft ))
-        os.system.flush()
+        sys.stdout.flush()
         #bar.update(count)
     #bar.finish()
 
