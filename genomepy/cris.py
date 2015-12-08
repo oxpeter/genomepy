@@ -10,6 +10,7 @@ import os
 import types
 import argparse
 import time
+import datetime
 
 import Bio.Blast.NCBIXML as xml
 from Bio.Seq import Seq
@@ -19,10 +20,56 @@ from genomepy import config, gffparser, genematch
 ###### INITIALISE THE FILE PATHS NEEDED FOR ANALYSIS #######################
 
 dbpaths = config.import_paths()
+verbalise = config.check_verbose(True) # mainly to allow running in Django
 
 ############################################
 
+def define_arguments():
+    parser = argparse.ArgumentParser(description="Finds and assesses CRISPR sites")
 
+    ### input options ###
+    # logging options:
+    parser.add_argument("-q", "--quiet", action='store_true',default=False,
+                        help="print fewer messages and output details")
+    parser.add_argument("-o", "--output", type=str, default='crispr_design.out',
+                        help="specify the filename to save results to")
+    parser.add_argument("-d", "--directory", type=str,
+                        help="specify the directory to save results to")
+    parser.add_argument("-D", "--display_on", action='store_true',default=False,
+                        help="display graph results (eg for p value calculation)")
+
+    ##### CLI Argument Parser #####
+    parser.add_argument("-s", "--sequence_file", type=str, dest="seq_path",
+                        default=dbpaths['assone'],
+                        help="Specify a fasta file containing the sequence to be searched")
+    parser.add_argument("--gene", type=str, default="",
+                        help="""Specify a gene or gene feature to be searched. The genomic
+                        DNA from the feature will be used to search for gRNA sites. Eg:
+                        LOC105281428_Q""")
+    parser.add_argument("-p", "--pattern", type=str, dest="pattern",
+                        default='(?=([Gg][Gg].{18}.[Gg][Gg]))|(?=([Cc][Cc]..{18}[Cc][Cc]))',
+                        help="Specify the regular expression string to search with.")
+    parser.add_argument("-r", "--guide_rna", type=str,
+                        help="""Use a pre-defined guide RNA sequence:\nSX - short
+                        exogenous\nLX - long exogenous\nSN - short endogenous\nLN -
+                        long endogenous""")
+    parser.add_argument("-g", "--gaps_allowed", type=int, dest="gaps_allowed", default=0,
+                        help="""Specify the number of gaps allowed in reported sequence
+                        matches.\nDefault = 0""")
+    parser.add_argument("-i", "--id_thresh", type=int,  default=18,
+                        help="Specify the minimum id to report in sequence matches.\nDefault = 18")
+    parser.add_argument("-t", "--threshold", type=int, dest="threshold", default=76,
+                        help="""Specify the minimum %%id to report in sequence matches.\n
+                        Default = 76""")
+    parser.add_argument("-x", "--exogenous", action='store_true',
+                        help="""Use if sequence is exogenous, to do second blast with GG
+                        added to seq.""")
+    parser.add_argument('--threads', type=int, default=1,
+                        help='Select the number of threads to perform calculation on (default = 1)')
+
+    #parser.add_argument("fastq_dir", type=str, help="The directory containing all the fastq files for analysis.")
+
+    return parser
 
 def findCRISPRsites(sequence_file=dbpaths['ass'], pattern='(?=(.{20}.[Gg][Gg]))|(?=([Cc][Cc]..{20}))'):
     " extract all CRISPR site matches from the genome as tuples containing each CRISPR sequence: "
@@ -92,10 +139,10 @@ def make_fasta(seq, seqnames=None, outpath='/Users/POxley/blastinput.tmp', appen
         wobj = open(outpath, append)
         for item in seq:
             if seqnames:
-                defline = ">lcl|sequence" + namedic[item] + "\n"
+                defline = ">sequence" + namedic[item] + "\n"
             else:
                 position = str(seq.index(item))
-                defline = ">lcl|sequence" + position + "\n"
+                defline = ">sequence" + position + "\n"
             seqline = str(item) + "\n"
             wobj.write(defline)
             wobj.write(seqline)
@@ -112,31 +159,33 @@ def make_fasta(seq, seqnames=None, outpath='/Users/POxley/blastinput.tmp', appen
         wobj.write(seqline)
         wobj.close()
 
-def blastseq(seq, seqnames=None, inpath='/Users/POxley/blastinput.tmp' , outpath="/Users/POxley/blastoutput.tmp", outfmt='tab'):
+def blastseq(seq, seqnames=None, inpath='/Users/POxley/blastinput.tmp' , outpath="/Users/POxley/blastoutput.tmp", outfmt='tab', threads=1):
     "blast sequence given in input file against C.biroi genome"
-
+    t0 = datetime.datetime.now()
     make_fasta(seq, seqnames, inpath)
 
     if outfmt == 'tab':
         # for tabular output:
-        blastcmd = 'blastn -query ' + inpath + ' -db ' + dbpaths['blastnuc'] + '/Cbir.v3.0 -outfmt 6 -word_size 7 -evalue 1000000 -out ' + outpath
+        blastcmd = 'blastn -query ' + inpath + ' -db ' + dbpaths['blastnuc'] + '/Cbir.v3.0 -outfmt 6 -word_size 4 -evalue 1000000 -out ' + outpath + ' -num_threads ' + str(threads)
 
     elif outfmt == 'xml':
         # for xml output:
-        blastcmd = 'blastn -query ' + inpath + ' -db ' + dbpaths['blastnuc'] + '/Cbir.v3.0 -outfmt 5 -word_size 7 -evalue 1000000 -out ' + outpath
+        blastcmd = 'blastn -query ' + inpath + ' -db ' + dbpaths['blastnuc'] + '/Cbir.v3.0 -outfmt 5 -word_size 4 -evalue 1000000 -out ' + outpath + ' -num_threads ' + str(threads)
 
     elif outfmt == 'crisprtab':
         # for tab delimited values used in crispr search parsing:
-        blastcmd = 'blastn -query ' + inpath + ' -db ' + dbpaths['blastnuc'] + "/Cbir.v3.0 -outfmt '6 qseqid qlen nident mismatch gaps sseq sseqid sstart send qstart' -word_size 7 -evalue 1000000 -out " + outpath
+        blastcmd = 'blastn -query ' + inpath + ' -db ' + dbpaths['blastnuc'] + "/Cbir.v3.0 -outfmt '6 qseqid qlen nident mismatch gaps sseq sseqid sstart send qstart' -word_size 4 -evalue 1000000 -out " + outpath + ' -num_threads ' + str(threads)
 
     else:
         # if you want blast results that are viewer friendly:
         blastcmd_vis = 'blastn -query ' + inpath + \
             ' -db ' + dbpaths['blastnuc'] + '/Cbir.v3.0 -out ' + \
             ' -out ' + outpath + \
-            ' -outfmt 3 -word_size 7 -evalue 1000000'
-
+            ' -outfmt 3 -word_size 4 -evalue 1000000' + \
+            ' -num_threads ' + str(threads)
     os.system(blastcmd)
+    t1 = datetime.datetime.now()
+    #verbalise("B", "Time to blast sequence: %s" % datetime.timedelta.total_seconds(t1-t0))
 
 def findnearest(scaffold, hitpos, gff_p=dbpaths['gff']):
     "deprecated. Now use gffparser gff_obj.findnearest(scaffold, posn)"
@@ -189,21 +238,38 @@ def parse_crispr_blast(blast_results, gffobj, id_thresh=18, gap_thresh=0, showne
             haspam = False
             cutsite = int(sstart)
 
-        # check to see if cutsite is in exon:
-        exonic = gffobj.inexon(cutsite, sseqid, gene=False)
+        ## exonic = gffobj.inexon(cutsite, sseqid)
 
         if int(nident) >= id_thresh and int(gaps) <= gap_thresh:
             if shownearest:
-                upstream, downstream = gffobj.findnearest(sseqid, cutsite)
+                upstream, downstream = gffobj.findnearest((sseqid, cutsite), ftype='gene')
             else:
-                upstream = (0,'not searched')
-                downstream = (0,'not searched')
+                upstream = (1,'not searched')
+                downstream = (1,'not searched')
 
-            curr_result = {'downdist':downstream[0], 'downgene':downstream[1],
-                'updist':upstream[0], 'upgene':upstream[1],'qlen':int(qlen),
-                'nident':int(nident), 'mismatch':len(qseqid)-int(nident), 'gaps':int(gaps),
-                'qseq':"%s%s" % (' ' * int(qstart), sseq), 'sseqid':sseqid, 'sstart':int(sstart), 'send':int(send),
-                'exonic':exonic, 'cutsite':cutsite, 'haspam':haspam}
+            # check to see if cutsite is in exon:
+            exonic = False
+            if upstream[0] == 0 or downstream[0] == 0:
+                in_exon = gffobj.findfeatures((sseqid,cutsite), ftype='exon')
+                if len(in_exon) > 0:
+                    exonic = True
+
+
+            curr_result = { 'downdist':downstream[0],
+                            'downgene':" ".join([str(f) for f in downstream[1]]),
+                            'updist':upstream[0],
+                            'upgene':" ".join([str(f) for f in upstream[1]]),
+                            'qlen':int(qlen),
+                            'nident':int(nident),
+                            'mismatch':len(qseqid)-int(nident),
+                            'gaps':int(gaps),
+                            'qseq':"%s%s" % (' ' * int(qstart), sseq),
+                            'sseqid':sseqid,
+                            'sstart':int(sstart),
+                            'send':int(send),
+                            'exonic':exonic,
+                            'cutsite':cutsite,
+                            'haspam':haspam}
 
             if qseqid in results_dict:
                 results_dict[qseqid].append(curr_result)
@@ -270,9 +336,13 @@ def pcr_creator():
 	return None
 
 def create_log(args):
+    """
+    DEPRECATED: USE CONFIG.CREATE_LOGS INSTEAD
+    """
+
     ## create output folder and log file of arguments:
     timestamp = time.strftime("%b%d_%H.%M")
-    if not args.output_file:
+    if not args.output:
         root_dir = os.getcwd()
         newfolder = root_dir + "/crispr." + timestamp + "." + args.guide_rna
         os.mkdir(newfolder)  # don't have to check if it exists, as timestamp is unique
@@ -301,60 +371,52 @@ def report_results(filename, blast_dict, header=True):
             results_h.write( "  %(qseq)-26s %(sseqid)-20s %(cutsite)-10d || %(nident)-4d %(mismatch)-4d %(gaps)-4d PAM:%(haspam)-5s || %(exonic)-5s %(downgene)s %(downdist)-10d %(upgene)s %(updist)d\n" % (match) )
     results_h.close()
 
-
-
-if __name__ == '__main__':
-
-    ##### CLI Argument Parser #####
-    parser = argparse.ArgumentParser(description="Finds and assesses CRISPR sites")
-    parser.add_argument("-s", "--sequence_file", type=str, dest="seq_path",
-                        default=dbpaths['assone'],
-                        help="Specify the .fa file containing the sequence to be searched")
-    parser.add_argument("-p", "--pattern", type=str, dest="pattern",
-                        default='(?=([Gg][Gg].{18}.[Gg][Gg]))|(?=([Cc][Cc]..{18}[Cc][Cc]))',
-                        help="Specify the regular expression string to search with.")
-    parser.add_argument("-r", "--guide_rna", type=str,
-                        help="""Use a pre-defined guide RNA sequence:\nsx - short
-                        exogenous\nlx - long exogenous\nsn - short endogenous\nln -
-                        long endogenous""")
-    parser.add_argument("-o", "--output_file", type=str,
-                        help="Specify a file in which to save results.")
-    parser.add_argument("-g", "--gaps_allowed", type=int, dest="gaps_allowed", default=0,
-                        help="""Specify the number of gaps allowed in reported sequence
-                        matches.\nDefault = 0""")
-    parser.add_argument("-i", "--id_thresh", type=int,  default=18,
-                        help="Specify the minimum id to report in sequence matches.\nDefault = 18")
-    parser.add_argument("-t", "--threshold", type=int, dest="threshold", default=76,
-                        help="""Specify the minimum %%id to report in sequence matches.\n
-                        Default = 76""")
-    parser.add_argument("-x", "--exogenous", action='store_true',
-                        help="""Use if sequence is exogenous, to do second blast with GG
-                        added to seq.""")
-    #parser.add_argument("fastq_dir", type=str, help="The directory containing all the fastq files for analysis.")
-
-    args = parser.parse_args()
-    ###############################
-
-    if args.guide_rna == 'sx':  # short exogenous
+def main(args, logfile, verbalise):
+    if args.guide_rna.lower() == 'sx':  # short exogenous
         args.pattern = '(?=(.{18}.[Gg][Gg]))|(?=([Cc][Cc]..{18}))'
         args.exogenous = True
-    if args.guide_rna == 'lx':  # long exogenous
+    if args.guide_rna.lower() == 'lx':  # long exogenous
         args.pattern = '(?=(.{20}.[Gg][Gg]))|(?=([Cc][Cc]..{20}))'
         args.exogenous = True
-    if args.guide_rna == 'sn':  # short endogenous
+    if args.guide_rna.lower() == 'sn':  # short endogenous
         args.pattern = '(?=([Gg][Gg].{16}.[Gg][Gg]))|(?=([Cc][Cc].{16}[Cc][Cc].[Cc][Cc]))'
-    if args.guide_rna == 'ln':  # long endogenous
+    if args.guide_rna.lower() == 'ln':  # long endogenous
         args.pattern = '(?=([Gg][Gg].{18}.[Gg][Gg]))|(?=([Cc][Cc]..{18}[Cc][Cc]))'
     else:
         args.guide_rna = 'manual'
 
-    logfile = create_log(args)
+    ## gffobj = gffparser.My_gff() ##
+    gffobj = gffparser.GffLibrary(dbpaths['gff'], dbpaths['ass'])
+    verbalise("Y", gffobj)
+
+    error_log = []
+    if args.gene:
+        sequences = gffobj.extractseq(args.gene, buffer=0)
+        sequencefile = logfile[:-3] + 'input_file.fasta'
+        handle = open(sequencefile, 'w')
+        for defline in sequences:
+            handle.write("%s\n%s\n" % (defline, sequences[defline]))
+            if sequences[defline] == "":
+                error_log.append( sequences[defline] )
+            elif re.search("library$", str(sequences[defline])):
+                error_log.append( sequences[defline] )
+        handle.close()
+        # change seq_path so that newly generated fasta files will be used:
+        args.seq_path = sequencefile
+
+        if len(error_log) > 0:
+            verbalise("R", "\n".join(error_log))
+
+        handle = open(args.seq_path, 'rb')
+        for line in handle:
+            verbalise("C", line.strip())
+        handle.close()
 
     listcount = 0
     uniquedict = {}
     dupdict = {}
     CRISPRmatches, scafreport = findCRISPRsites(args.seq_path, args.pattern)
-    print "\n%d scaffold%s with matches found." % (len(scafreport), 's' if len(scafreport) > 1 else '' )
+    verbalise("G", "\n%d scaffold%s with matches found." % (len(scafreport), 's' if len(scafreport) > 1 else '' ))
     for scaf, hitlist in scafreport:
         for seqresult in hitlist:
             listcount += 1
@@ -369,14 +431,15 @@ if __name__ == '__main__':
     resultslist = uniquedict
 
 
-    gffobj = gffparser.My_gff()
 
-    print "%d CRISPR sites found in sequence file (%d unique)" % (listcount, len(resultslist))
+
+    verbalise("G", "%d CRISPR sites found in sequence file (%d unique)" % (listcount, len(resultslist)))
 
 
 
     blast_file = logfile[:-3] + 'blast.info'
-    print "Number of hits above threshold for each query will be saved to %s" % (blast_file)
+    report_results(blast_file, {}, header=True)
+    verbalise("Y", "Number of hits above threshold for each query will be saved to %s" % (blast_file))
     count = 1
     tstart = time.time()
     pbcount = 0
@@ -392,7 +455,7 @@ if __name__ == '__main__':
                 print '\r>> %d of %d genes complete. ETA to completion: %d:%02d:%02d                      ' % (pbcount, len(resultslist), h, m, s),
             sys.stdout.flush()
         else:
-            time_remaining = len(resultslist) * 90
+            time_remaining = len(resultslist) * 360
             m, s = divmod(time_remaining, 60)
             h, m = divmod(m, 60)
             print '>> 0 of %d genes complete. Completion in approx: %d:%02d:%02d                      ' % (len(resultslist), h, m, s),
@@ -401,8 +464,19 @@ if __name__ == '__main__':
         # perform blast, parse results, and write to file:
         pbcount += 1
         count += 1
-        blastseq(seq1, inpath=logfile[:-3]+'blast_in.tmp', outpath=logfile[:-3]+'blast_out.tmp', outfmt='crisprtab')
-        blast_dict = parse_crispr_blast(logfile[:-3]+'blast_out.tmp', gffobj, id_thresh=args.id_thresh, gap_thresh=args.gaps_allowed, shownearest=True)
+
+        blastseq(seq1,
+                inpath=logfile[:-3]+'blast_in.tmp',
+                outpath=logfile[:-3]+'blast_out.tmp',
+                outfmt='crisprtab',
+                threads=args.threads)
+
+        blast_dict = parse_crispr_blast(logfile[:-3]+'blast_out.tmp',
+                                        gffobj,
+                                        id_thresh=args.id_thresh,
+                                        gap_thresh=args.gaps_allowed,
+                                        shownearest=True)
+
         if count == 2:
             report_results(logfile[:-3]+'final_results.info', blast_dict)
         else:
@@ -442,8 +516,14 @@ if __name__ == '__main__':
 
             pbcount += 1
             count += 1
-            blastseq(seq1, inpath=logfile[:-3]+'blast_in.tmp', outpath=logfile[:-3]+'blast_out.tmp', outfmt='crisprtab')
-            blast_dict = parse_crispr_blast(logfile[:-3]+'blast_out.tmp', gffobj, id_thresh=args.id_thresh, gap_thresh=args.gaps_allowed, shownearest=True)
+            blastseq(seq1, inpath=logfile[:-3]+'blast_in.tmp',
+                        outpath=logfile[:-3]+'blast_out.tmp', outfmt='crisprtab',
+                        threads=args.threads)
+            blast_dict = parse_crispr_blast(logfile[:-3]+'blast_out.tmp',
+                                            gffobj,
+                                            id_thresh=args.id_thresh,
+                                            gap_thresh=args.gaps_allowed,
+                                            shownearest=True)
 
             if count == 2:
                 report_results(logfile[:-3]+'final_results.info', blast_dict)
@@ -455,3 +535,16 @@ if __name__ == '__main__':
 
     os.system('rm  ' + logfile[:-3]+'blast_in.tmp' )
     os.system('rm  ' + logfile[:-3]+'blast_out.tmp' )
+
+if __name__ == '__main__':
+
+    parser = define_arguments()
+    args = parser.parse_args()
+
+    verbalise = config.check_verbose(not(args.quiet))
+    logfile = config.create_log(args, outdir=args.directory, outname=args.output)
+
+    main(args, logfile, verbalise)
+
+    ###############################
+
