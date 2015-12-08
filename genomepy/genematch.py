@@ -218,10 +218,10 @@ def define_arguments():
     parser.add_argument("-i", "--input", type=str,
                         help="file to analyse")
     parser.add_argument("-c", "--column", type=int, default=0,
-                        help="column to extract data from")
-    parser.add_argument("-f", "--datafile", type=str,
+                        help="column to extract data from (default = 0)")
+    parser.add_argument("-f", "--datafile", type=str, default=dbpaths['goterms'],
                         help="file containing genes and their corresponding terms")
-    parser.add_argument("-g", "--gofile", type=str,
+    parser.add_argument("-g", "--gofile", type=str, default=dbpaths['obo'],
                         help=".obo file containing go terms,definitions etc")
 
     # analysis options:
@@ -490,16 +490,15 @@ def blast_results(blast_results, num_results=10):
         if counter == 0:
             break
 
-def extractseq(geneID, type='pep', OGS=dbpaths['cds'][:-4], startpos=0, endpos=-1):
+def extractseq(geneID, db=dbpaths['cds'], startpos=0, endpos=-1):
     """ extracts sequence of geneID from the current annotations. type is cds,  pep or fasta.
     """
     #fname = dbpaths[type]
     geneseq = ""
-    fname = ".".join([OGS, type])
-    fobj = open(fname)
+    fobj = open(db, 'rb')
     for line in fobj:
         if line[0] == '>':
-            query = re.search( geneID + '[\s\n]', line)
+            query = re.search( geneID + '[\s]', line)
         if query:
             thisline = fobj.next()
 
@@ -533,11 +532,12 @@ def extract_promoter(promoterfile, supergenomefasta):
     """
     # To extract Vg promoters from all ants, I used the following under __main__:
 
-    Filename has following format:
-    gene        sp      scaffold        std Start   Stop
+    promoterfile has following format:
+    gene        sp      scaffold        strand Start   Stop
     Acep_Vgw2	Acep	scaffold00004	-	3174479	3175079
     Acep_Vgw1	Acep	scaffold00004	-	3190854	3191454
 
+    supergenomefasta has all scaffolds of all examined species.
     """
 
     file_h = open(promoterfile, 'rb')
