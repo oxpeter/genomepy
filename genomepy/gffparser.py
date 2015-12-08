@@ -19,8 +19,7 @@ from Bio.SeqFeature import SeqFeature, FeatureLocation
 from Bio.Graphics import GenomeDiagram
 
 import gff2bed2
-from genomepy import genematch
-from genomepy import config
+from genomepy import genematch, config
 from genomepy.config import pickle_jar, open_pickle_jar, pickle_gtypes, unpickle_gtypes
 
 ###### INITIALISE THE FILE PATHS NEEDED FOR ANALYSIS #######################
@@ -200,6 +199,47 @@ class Splicer(object):
         junc_h.close()
         return ccount, acount, rcount, ncount
 
+class FastaLibrary(object):
+    def __init__(self, fastafile, buildtime=False):
+        # initialise variables
+        t0 = datetime.datetime.now()
+        qc = 0
+        self.seqlib ={}
+        geneseq = ""
+
+        # read genome fasta file
+        handle = open(fastafile, 'rb')
+        for line in handle:
+            if line[0] == '>':
+                try:
+                    self.seqlib[query.group(1)] = geneseq
+                except UnboundLocalError:
+                    pass
+                query = re.search( '>([\w\|]+)', line)
+                geneseq = ""
+            else:
+                geneseq += line.strip()
+        else:
+            self.seqlib[query.group(1)] = geneseq
+        handle.close()
+
+        # report time (if requested)
+        if buildtime:
+            t1 = datetime.datetime.now()
+            verbalise("B", "Time to build library: %s" % datetime.timedelta.total_seconds(t1-t0))
+
+    def __getitem__(self, key):
+        return self.seqlib[key]
+
+    def __contains__(self, key):
+        return key in self.seqlib
+
+    def __repr__(self):
+        return "[FastaLibrary object] %r" % (fastafile)
+
+    def __str__(self):
+        return "Fasta Library: %s sequences" % (len(self.seqlib))
+
 class GffFeature(object):
     "a sub-element of a gff library"
     def __init__(self, line="" ):
@@ -212,17 +252,26 @@ class GffFeature(object):
 
         self.atts = parse_atts(line)
         self.flds = parse_cols(line)
+        # flds:  "scaf","source","type","start","end","score","strand", "phase"
 
         if self.flds:       # mark whether details were actually present to form feature
             self.empty = False
         else:
             self.empty = True
 
+        # assign a unique id:
+        # NB: cds features do not have unique ids in the NCBI attribute field. Needs to be
+        # combined with start position to become unique.
+        if self.flds['type'] == 'CDS':
+            suffix = "_%s" % str(self.flds['start'])
+        else:
+            suffix = ""
+
         try:
             id = self.atts['ID']
         except KeyError:
             id = random.randint(1000000,9999999)
-        self.id = id
+        self.id = "%s%s" % (id, suffix)
 
     def __repr__(self):
         return "%r %r %r" % (self.id, self.atts, self.flds)
@@ -242,17 +291,17 @@ class GffFeature(object):
         else:
             parent = "---"
         try:
-            ftype = self.fields['type']
+            ftype = self.flds['type']
         except KeyError:
             ftype = "---"
 
-        return "type:%s id:%s name:%s gene:%s parent:%s" % (ftype, self.id, name, gene, parent )
-
+        return "id:%s name:%s gene:%s parent:%s type:%s " % (self.id, name, gene, parent, ftype )
 
 class GffLibrary(object):
-    def __init__(self, gff_file):
+    def __init__(self, gff_file, fasta_file=None):
         # information on data source
         self.gff_file = gff_file
+        self.load_assembly(fasta_file)
 
         # dictionaries to access subfeatures
         self.featlib = {}   # lists partitioned according to feature type
@@ -289,22 +338,22 @@ class GffLibrary(object):
                     self.scaflib[scaf][ftype] = [subfeature]
                     self.scaflib[scaf]['all'].append(subfeature) # 'all' category already created
             else:
-                self.scaflib[scaf]['all'] = [subfeature]
-                self.scaflib[scaf][ftype] = [subfeature]
+                self.scaflib[scaf] = {'all':[subfeature], ftype:[subfeature]}
+
 
             # idlib
             self.idlib[subfeature.id] = subfeature
 
             # namelib
             if 'Name' in subfeature.atts:
-                if  subfeature.atts['Name'] in self.name:
+                if  subfeature.atts['Name'] in self.namelib:
                     self.namelib[subfeature.atts['Name']].append(subfeature)
                 else:
                     self.namelib[subfeature.atts['Name']] = [subfeature]
 
             # find parent and children subfeatures and connect them
             if 'Parent' in subfeature.atts:
-                subfeature.parent = subfeature.atts['Parent']
+                subfeature.parent = self.idlib[subfeature.atts['Parent']]
                 self.idlib[subfeature.atts['Parent']].children[subfeature.id] = subfeature
 
                 if subfeature.parent.parent:
@@ -315,9 +364,11 @@ class GffLibrary(object):
         return "%d features from library %r" % (len(self.idlib), self.gff_file)
 
     def __str__(self):
-        ret_str = "[GFF LIBRARY]\nFrom file %s\n%s\nTotal features: %d"
+        has_ass = str(self.fastalib) if self.fastalib else "Fasta Library: None"
+        ret_str = "[GFF LIBRARY]\nFrom file %s\n%s\n%s\nTotal features: %d"
         return  ret_str % (os.path.basename(self.gff_file),
-                            "\n".join([ f + ": " + str(len(featlib[f])) for f in self.featlib ]),
+                            has_ass,
+                            "\n".join([ f + ": " + str(len(self.featlib[f])) for f in self.featlib ]),
                             len(self.idlib))
 
     def __contains__(self, item):
@@ -342,7 +393,7 @@ class GffLibrary(object):
             exons = []
             for gc in gene.grandchildren.values():
                 if gc.flds['type'] == 'exon':
-                    exons += (gc.flds['start'], gc.flds['stop'], gc.flds['phase'])
+                    exons.append((gc.flds['start'], gc.flds['end'], gc.flds['strand']))
             exonlist = list(set(exons))
 
             if len(exonlist) == 0:
@@ -360,7 +411,7 @@ class GffLibrary(object):
             # master exon and store them instead.
             gene.master = sorted([ x[:2] for x in exonlist ],
                                         key=lambda i: i[0],
-                                        reverse=(not self.strandinfo[mrna]))
+                                        reverse=(True if gene.flds['strand']=='-' else False))
             mastercount += 1
         return mastercount
 
@@ -371,7 +422,7 @@ class GffLibrary(object):
         this method replaces the old ingene and inexon methods, providing greater
         specificity and flexibility.
 
-        OUTPUT from  ftype='all':
+        OUTPUT from  ftype='all' (NB: actual feature instance is appended, not just its id):
         found['gene'] = [gene01]
         found['mRNA'] = [rna01, rna02]
         found['exon'] = [exon01, exon07]
@@ -396,6 +447,200 @@ class GffLibrary(object):
 
         return found
 
+    def extractseq(self, featurename, buffer=0, cds=False, translate=False,
+                    boundaries=False, trim_from=0, trim_to=999999999):
+        """
+        For the given feature, return the genomic or cds DNA sequence. Buffer will return
+        x bp up- and down-stream of the gene, but only in genomic DNA (not for cds option).
+        If boundaries is True, it will return a list of cumulative relative positions of
+        exon boundaries for the cds sequence instead (and will force cds to be True)
+        """
+        # check that the sequence library was supplied:
+        if not self.fastalib:
+            return {">No genome assembly was supplied to the gff library" % featurename:"NNNN" }
+
+        if boundaries:
+            cds = True
+            translate = False
+
+        features = self._get_cdfeatures(featurename, cds)
+        seq_dic = {}
+
+        if not features:
+            return {">%s not found in gff library" % featurename:"NNNN" }
+
+        elif not cds:
+            for i,f in enumerate(features):
+                seq, defline = self._get_seq(f, buffer)
+                if seq and translate:
+                    seq_dic[defline] = seq[trim_from:trim_to].translate()
+                elif seq:
+                    seq_dic[defline] = seq[trim_from:trim_to]
+                else:
+                    seq_dic[">%s seq%d %s not found" % (featurename, i, f)] = None
+
+        else:
+            for feat in features:
+                for isoform in feat:
+                    cdsseq = []
+                    # pull out some useful identifiers from first grandchild to create defline:
+                    defline = ">%s" % self.idlib[isoform[0].atts['Parent']]
+                    for att in ['gene', 'protein_id', 'transcript_id', 'product']:
+                        if att in self.idlib[isoform[0].atts['Parent']].atts:
+                            " ".join([defline, self.idlib[isoform[0].atts['Parent']].atts[att]])
+
+                    # collect each sequence:
+                    for child in isoform:
+                        if child.flds['type'] == 'CDS':
+                            # save start location for sorting exons
+                            cdsseq.append( (child.flds['start'],self._get_seq(child)[0]) )
+
+                    reverse = True if child.flds['strand'] == '-' else False
+
+                    if boundaries:
+                        seq = [ len(p[1]) for p in sorted(cdsseq,
+                                                            key=lambda x: x[0],
+                                                            reverse=reverse) ]
+                    else:
+                        seq = reduce(lambda x,y: x+y,
+                                        [ p[1] for p in sorted(cdsseq,
+                                        key=lambda x: x[0],
+                                        reverse=reverse)])[trim_from:trim_to]
+                    if translate:
+                        seq = seq.translate()
+                    seq_dic[defline] = seq
+
+        return seq_dic
+
+
+    def _get_cdfeatures(self, featurename, cds=False):
+        # get feature from requested name (returns a list):
+        if featurename in self.idlib:
+            feature = [self.idlib[featurename]]
+        elif featurename in self.namelib:
+            feature = self.namelib[featurename]
+        else:
+            return None
+
+        f_list = []
+        if cds:
+            for i,f in enumerate(feature):
+                # if cds requested, iterate through the children of the gene to paste
+                # their sequences together.
+                if cds and f.flds['type'] == 'mRNA':
+                    cdfeatures = [ [ elem for elem in f.children.values() if elem.flds['type'] == 'CDS'],]
+                elif cds and f.flds['type'] == 'gene':
+                    cdfeatures = [ [elem for elem in c.children.values() if elem.flds['type'] == 'CDS'] for c in f.children.values() ]
+                else:
+                    cdfeatures = None
+                f_list.append(cdfeatures)
+        else:
+            f_list = feature
+
+        return f_list
+
+    def _get_seq(self, f, buffer=0):
+        if f.flds['scaf'] in self.fastalib:
+            start = min(f.flds['start'], f.flds['end']) - buffer - 1 # to make python count
+            end   = max(f.flds['start'], f.flds['end']) + buffer
+            if start < 0:
+                start = 0
+            seq   = self.fastalib[f.flds['scaf']][start:end ]
+
+            # check if reverse complement needs to be determined:
+            if f.flds['strand']=='-':
+                seq_rc = Seq(seq, generic_dna).reverse_complement()
+                seq    = seq_rc
+
+            defline = ">%s [%s, %d:%d]" % (f, f.flds['scaf'], start, end)
+        else:
+            seq = None
+            defline = None
+        return seq, defline
+
+    def fetch_promoter(self, featurename, upstream=450, downstream=50):
+        """
+        For the given feature, return the sequence corresonding to the promoter region
+        specified
+        """
+        # get feature from requested name (returns a list):
+        if featurename in self.idlib:
+            feature = [self.idlib[featurename]]
+        elif featurename in self.namelib:
+            feature = self.namelib[featurename]
+        else:
+            return {">%s" % featurename:"%s not found in gff library" % featurename}
+
+        seq_list = {}
+        for i,f in enumerate(feature):
+            # the strand determines which position will be the start, and which direction
+            # is upstream and downstream, and whether the reverse complement needs to
+            # be extracted:
+            if f.flds['scaf'] in self.fastalib:
+                if f.flds['strand']=='+':
+                    start = min(f.flds['start'], f.flds['end']) - upstream - 1
+                    end   = min(f.flds['start'], f.flds['end']) + downstream
+                    if start < 0:
+                        start = 0
+                    seq   = self.fastalib[f.flds['scaf']][start:end]
+                else:
+                    start  = max(f.flds['start'], f.flds['end']) - downstream - 1
+                    end    = max(f.flds['start'], f.flds['end']) + upstream
+                    if start < 0:
+                        start = 0
+                    seq_rc = Seq(self.fastalib[f.flds['scaf']][start:end], generic_dna)
+                    seq    = seq_rc.reverse_complement()
+
+                seq_list[">%s [%s, %d:%d](searched:%s result:%d)" % (f, f.flds['scaf'], start, end, featurename, i)] = seq
+            else:
+                seq_list[">%s seq%d %s" % (featurename, i, f)] = "%s not found in fasta library" % (f.flds['scaf'])
+        return seq_list
+
+    def findnearest(self, locus, ftype='all'):
+        """
+        Finds the closest features of type ftype, both up- and downstream of the given
+        locus.
+        """
+        # first check if locus is within a feature:
+        is_within = self.findfeatures(locus, ftype=ftype)
+
+        if len(is_within) > 0:
+            feat_list = [ f for eachlist in is_within.values() for f in eachlist ]
+            return (0, feat_list), (0, feat_list)
+
+        else:
+            closestup   = 999999999
+            closestdown = 999999999
+            upgene   = []
+            downgene = []
+
+            # next check if scaffold contains any features:
+            if locus[0] not in self.scaflib:
+                return ((closestup, []), (closestdown, []))
+
+            # now find closest of all features on this scaffold:
+            for feature in self.scaflib[locus[0]][ftype]:
+                if 0 < locus[1] - max(feature.flds['start'],feature.flds['end']) < closestup:
+                    closestup = locus[1] - max(feature.flds['start'],feature.flds['end'])
+                    upgene = [feature]
+                elif locus[1] - max(feature.flds['start'],feature.flds['end']) == closestup:
+                    upgene.append(feature)
+
+                if 0 < min(feature.flds['start'],feature.flds['end']) - locus[1] < closestdown:
+                    closestdown = min(feature.flds['start'],feature.flds['end']) - locus[1]
+                    downgene = [feature]
+                elif min(feature.flds['start'],feature.flds['end']) - locus[1] == closestdown:
+                    downgene.append(feature)
+            upstream = (closestup, upgene)
+            downstream = (closestdown, downgene)
+
+            return upstream, downstream
+
+    def load_assembly(self, fasta_file):
+        if fasta_file:
+            self.fastalib = FastaLibrary(fasta_file, False) # genome seq lib for sequence extraction
+        else:
+            self.fastalib = None
 
 
 class My_gff(object):
@@ -1392,8 +1637,6 @@ def parse_go(gene, gofile=dbpaths['goterms']):
             output_dict[gene] = {"GO:######":("None listed","NA")}
     return output_dict
 
-
-
 ##### INITIATION & MISC #####
 
 def overlaps(x1, x2):
@@ -1612,9 +1855,6 @@ def separate_cuffjoined(gtf_file, dblid):
     print count
     return newfile
 
-
-
-
 ##### INTEGRATED PROGRAMS ##################
 
 def investigate(args, doblast=True):
@@ -1776,38 +2016,53 @@ def methylation_analysis(args):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description="Various GFF and gene-file manipulations")
+    ## output options
     parser.add_argument("-d", "--directory", type=str,
-                        help="specify the directory to save results to")
+                        help="Specify the directory to save results to")
     parser.add_argument("-o", "--output_file", type=str, default="output.list",
-                        help="File to save results to")
+                        help="Name of file to save results to")
+    parser.add_argument("-q", "--quiet", action='store_true', default=False,
+                        help="Print fewer messages and output details")
+
+    ## input options
     parser.add_argument("-i", "--input_file", type=str,
                         help="File to analyse")
-    parser.add_argument("-g", "--gff_file", type=str, default=dbpaths['lclgff'],
+    parser.add_argument("-g", "--gff", type=str, default=dbpaths['gff'],
                         help="GFF file for analyses")
-    parser.add_argument("-f", "--genome_file", type=str, default=dbpaths['assgi'],
+    parser.add_argument("-f", "--genome_file", type=str, default=dbpaths['ass'],
                         help="Genome fasta file")
     parser.add_argument("-G", "--GO_file", type=str, default=dbpaths['goterms'],
                         help=".list file containing GO terms for each gene")
+
+    ## analysis options
     parser.add_argument("--show_go", action='store_true', default=False,
                         help="run GO analyses")
     parser.add_argument("-I", "--investigate", action='store_true',
-                        help="analyse a list of genes")
+                        help="Analyse a list of genes")
     parser.add_argument("-b", "--blastoff", action='store_true',
-                        help="turns off blast search for investigate option")
+                        help="Turns off blast search for investigate option")
     parser.add_argument("-M", "--methylation", action='store_true',
-                        help="perform methylation analysis")
+                        help="Perform methylation analysis")
     parser.add_argument("-S", "--splicing", type=str,
-                        help="perform alternate splicing analysis on given file")
+                        help="Perform alternate splicing analysis on given file")
     parser.add_argument("--bed2gtf", type=str,
-                        help="converts from bed to both ex.gff and gtf formats")
+                        help="Converts from bed to both ex.gff and gtf formats")
     parser.add_argument("--gff2bed", action='store_true',
-                        help="converts from gff to bed format")
+                        help="Converts from gff to bed format")
     parser.add_argument("-t", "--trim", type=str,
-                        help="trims UTRs from gff file")
+                        help="Trims UTRs from gff file")
     parser.add_argument("-s", "--strip", type=str,
-                        help="removes duplicate transcripts from bed file")
-    parser.add_argument("-q", "--quiet", action='store_true', default=False,
-                        help="turn of reporting")
+                        help="Removes duplicate transcripts from bed file")
+    parser.add_argument("--upstream", type=int, default=450,
+                        help="Set a value for upstream boundary")
+    parser.add_argument("--downstream", type=int, default=50,
+                        help="Set a value for downstream boundary")
+    parser.add_argument("--promoters", type=str, default="",
+                        help="""Find promoter sequence for specified gene. If "all"
+                        is specified then all genes in gff will be searched.
+                        """)
+    parser.add_argument('-c', "--column", type=int, default=0,
+                        help="Set column number for extracting list values from. (Default=0)")
 
     args = parser.parse_args()
 
@@ -1853,3 +2108,43 @@ if __name__ == '__main__':
         bed2gtf(args.bed2gtf)
     if args.strip:
         strip_duplicates(args.strip)
+    if args.promoters:
+        # test of fastalib:
+        #fastalib = FastaLibrary(args.genome_file, True)
+        #verbalise("M", fastalib)
+
+        # build gff library
+        gfflib = GffLibrary(args.gff, args.genome_file)
+        verbalise("G", gfflib.fastalib)
+        verbalise("G", gfflib)
+
+        # extract promoters
+        all_promoters = {}
+        if args.promoters == 'all':
+            for gene in ( g.id for g in gfflib.featlib['gene']):
+                all_promoters[gene] = gfflib.fetch_promoter(gene,
+                                                            upstream=args.upstream,
+                                                            downstream=args.downstream)
+        else:
+            for gene in config.make_a_list(args.promoters, args.column):
+                all_promoters[gene] = gfflib.fetch_promoter(gene,
+                                                            upstream=args.upstream,
+                                                            downstream=args.downstream)
+
+        # print to file:
+        outname = logfile[:-3] + 'promoters.fasta'
+        errorlog = logfile[:-3] + 'errors.log'
+        handle = open(outname, 'w')
+        errhandle = open(errorlog, 'a')
+        for p in all_promoters:
+            for defline in all_promoters[p]:
+                if str(all_promoters[p][defline])[-7:] == 'library':
+                    errhandle.write('%s\n%s\n' % (defline, str(all_promoters[p][defline])))
+                else:
+                    handle.write('%s\n%s\n' % (defline, str(all_promoters[p][defline])))
+        handle.close()
+        errhandle.close()
+
+
+
+
