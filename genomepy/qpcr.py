@@ -38,13 +38,17 @@ def define_arguments():
                         help="genome fasta file")
     parser.add_argument("-c", "--cds_file", type=str, default=dbpaths['cds'],
                         help="Fasta file of coding sequences")
-    parser.add_argument("-m", "--max_distance", type=int, default=500,
+    parser.add_argument("-m", "--max_distance", type=int, default=800,
                         help="""when checking primer mismatches, only report primer
                         pairs that are less than max_distance from one another
                         [ default = 500 ]""")
     parser.add_argument("-p", "--pcr", type=str,
                         help="""file containing primer pairs for analysis (not yet
                         implemented""")
+    parser.add_argument("-S", "--strong", action='store_true',
+                        help="""Only report mismatches that have primer orientation
+                        appropriate for forming PCR products (ie, one on sense, one
+                        on antisense and 3' ends towards each other)""")
 
 
 
@@ -173,7 +177,7 @@ def pretty_pairs(p1, p2):
         pright = p1
 
     # set direction of template:
-    if pleft[1] == '-':
+    if pleft[1] == '+':
         cleft = "%s:%d>>" % (pleft[2],pleft[3])
     else:
         cleft = "<<%s:%d" % (pleft[2],pleft[3])
@@ -183,7 +187,13 @@ def pretty_pairs(p1, p2):
     else:
         cright = "<<%s:%d" % (pright[2],pright[3])
 
-    return "%s---%d---%s" % (cleft,pright[0]-pleft[0],cright)
+    # check for correct alignment of primer pairs with one another:
+    if pleft[1] == '+' and pright[1] == '-':
+        strong = True
+    else:
+        strong = False
+
+    return ("%s---%d---%s" % (cleft,pright[0]-pleft[0],cright), strong)
 
 def find_pairs(match1, match2, dist=500):
     """
@@ -202,8 +212,9 @@ def find_pairs(match1, match2, dist=500):
             continue    # if only one match on a scaffold, then it cannot form a PCR product!
         else:
             for p1,p2 in itertools.combinations(combined[s], 2):
-                if 0 < abs(p1[0] - p2[0]) <= dist:
-                    pairs.append((s, min(p1[0], p2[0]), p1[3] + p2[3], pretty_pairs(p1, p2)))
+                if abs(p1[0] - p2[0]) <= dist:
+                    pp, strong = pretty_pairs(p1, p2)
+                    pairs.append((s, min(p1[0], p2[0]), p1[3] + p2[3], pp, strong))
 
     return pairs
 
@@ -227,32 +238,43 @@ def parse_fold(fold_output):
     "pulls out the sequences with acceptable level of secondary structure (delta)G > -9 kJ/mol"
 
     fold_h = open(fold_output, 'rb')
-    out_h  = open(fold_output + ".acceptable.info", 'w')
+    out_h  = open(fold_output[:-4] + "acceptable.info", 'w')
+    rnafolds = {}
 
     for line in fold_h:
-        defmatch = re.search(">(lcl\|)?([^ ]+) ([ACTGN]+) ([ACTGN]+)",line)
-        deltaGmatch  = re.search("\(( ?.[0-9]+.*)\)", line)
+        defmatch = re.search(">(.*_exon[0-9]*) ([ACTGN]+) ([ACTGN]+)",line)
+        deltaGmatch  = re.search("\(( ?.[0-9]+\.?[0-9]*)\)", line)
+        sequencematch = re.search("[ACGTUN]+", line)
         if defmatch:
-            geneproduct = defmatch.group(2)
-            primer1     = defmatch.group(3)
-            primer2     = defmatch.group(4)
+            geneproduct = defmatch.group(1)
+            primer1     = defmatch.group(2)
+            primer2     = defmatch.group(3)
+
+        elif deltaGmatch:
+            deltaG = float(deltaGmatch.group(1))
+            if deltaG > -8:
+                out_h.write("%-20s %-22s %-22s\n%s" % (geneproduct,
+                                                        primer1,
+                                                        primer2,
+                                                        line) )
+            rnafolds[(geneproduct, primer1, primer2)] = (deltaG, line.strip())
+        elif sequencematch:
+            continue
         else:
             geneproduct = "None found"
-            primer1 = "Primer1"
-            primer2 = "Primer2"
+            primer1 = 'primer1'
+            primer2 = 'primer2'
 
-        if deltaGmatch:
-            if float(deltaGmatch.group(1)) > -8:
-                out_h.write("%-20s %-22s %-22s\n%s" % (geneproduct, primer1, primer2, line) )
 
     fold_h.close()
     out_h.close()
+    return rnafolds
 
 def display_pcr_products(parsed_data):
     """
     for colorful display of potential pcr products!
     """
-    for p in sorted(parsed_data, key=lambda x: x[2]):
+    for p in parsed_data:
         if p[2] == 0:
             verbalise("G", p)
         elif 0 < p[2] <= 2:
@@ -263,7 +285,6 @@ def display_pcr_products(parsed_data):
             verbalise("M", p)
         elif 6 < p[2]:
             verbalise("R", p)
-
 
 def main(args, logfile):
     genelist = config.make_a_list(args.gene_list)
@@ -339,26 +360,23 @@ def main(args, logfile):
 
 
 
-    print "\nAnalysing ~%d primer pairs:" % (cumcount * 5)
-
-    # parse the primer3 output file
-    p3_results = parse_p3(p3_out)
+    verbalise("B", "\nAnalysing ~%d primer pairs:" % (cumcount * 5))
 
     # set up a dictionary to collate all the analyses performed on the primer pairs
     """
-    all_results[(genename, primer1, primer2)] = {  'primers':(),
-                                                   'pcr_products':(),
-                                                   'rna_fold':(),
-
+    all_results[(genename, primer1, primer2)] = {'primers':(),
+                                            'pcr_products':[(scaf, pos, mism, product),]
+                                            'rnafold':(deltaG, fold_pattern),
                                                 }
     """
+
     all_results = {}
 
 
     count=0
     t0 = datetime.datetime.now()
 
-    for name, primer1, primer2, start, finish in p3_results:
+    for name, primer1, primer2, start, finish in parse_p3(p3_out):
         count += 1
         all_results[(name, primer1, primer2)] = {'primers':(name,primer1,primer2,start,finish)}
 
@@ -378,16 +396,30 @@ def main(args, logfile):
         os.rmdir(temp_dir)
 
         # save results  - display using display_pcr_products()
-        all_results[(name, primer1, primer2)]['pcr_products'] = sorted(pairs, key=lambda x: x[2])
+        if args.strong:
+            products = [ p for p in sorted(pairs, key=lambda x: x[2]) if p[4] ]
+        else:
+            products = sorted(pairs, key=lambda x: (-x[4],x[2]))
+
+
+        all_results[(name, primer1, primer2)]['pcr_products'] = products
 
         # extract PCR product and save to fasta file for tertiary structure analysis:
         isoform = re.search("(.*)_exon", name).group(1)
-        pcr_seq_dic = gfflib.extractseq(isoform.split(" ")[2][5:], cds=True, trim_from=start , trim_to=finish )
+        pcr_seq_dic = gfflib.extractseq(isoform.split(" ")[2][5:],
+                                            cds=True,
+                                            trim_from=start,
+                                            trim_to=finish)
         try:
             pcr_seq = pcr_seq_dic[isoform]
         except KeyError:
-            verbalise("R", isoform, isoform.split(" ")[2][5:], "\n\n", pcr_seq_dic)
+            verbalise("R", "Isoform not found",
+                                isoform,
+                                isoform.split(" ")[2][5:],
+                                "\n\n",
+                                pcr_seq_dic)
             exit()
+
         fastafile = logfile[:-3] + 'fa'
         defline = " ".join([name, primer1, primer2])
         cris.make_fasta(pcr_seq, seqnames=defline, outpath=fastafile, append='a')
@@ -397,10 +429,7 @@ def main(args, logfile):
         tdiff = (t1-t0)
         trate = tdiff / count
         tleft = trate * cumcount * 5 - tdiff
-        sys.stdout.write("\nAnalysed %d/%d (%.2f%%) pairs. Approx %s remaining\n\n" % (count,
-                                                        cumcount * 5,
-                                                        100.0 * count / (cumcount * 5),
-                                                        tleft ))
+        sys.stdout.write("\nAnalysed %d/%d (%.2f%%) pairs. Approx %s remaining\n\n" % (count, cumcount * 5, 100.0 * count / (cumcount * 5), tleft ))
         sys.stdout.flush()
 
     ## run VIENNA RNAfold to check tertiary structure
@@ -411,9 +440,34 @@ def main(args, logfile):
         verbalise("R", "Error running RNAfold")
 
     ## cull VIENNA output to acceptable structure list, output primers:
-    parse_fold(viennaout)
+    rnafoldresults = parse_fold(viennaout)
 
+    # add rnafold results to result dictionary, then create tuple to sort each pair by
+    sortby = []
 
+    for k in all_results:
+        if k in rnafoldresults:
+            all_results[k]['rnafold'] = rnafoldresults[k]
+        else:
+            all_results[k]['rnafold'] = (-999, "No fold found")
+        sortby.append( (k,
+                        len(all_results[k]['pcr_products']),
+                        all_results[k]['rnafold'][0]),
+                    )
+
+    # write summary to file!
+    handle = open(logfile[:-3] + 'summary.out', 'w')
+    for k, product_num, deltaG in sorted(sortby, key=lambda (x,y,z): (x[0],y,-z)):
+        verbalise("M", k[0])
+        verbalise("Y", k[1], k[2])
+        verbalise("C", all_results[k]['rnafold'][1])
+        display_pcr_products(all_results[k]['pcr_products'])
+        print "\n"
+        handle.write("%s\n%s %s\n" % (k[0],k[1],k[2]))
+        handle.write("%s\n" % (all_results[k]['rnafold'][1]))
+        handle.write("%s\n\n" % ("\n".join([ str(t) for t in all_results[k]['pcr_products'] ])))
+
+    handle.close()
 ################################################################
 
 if __name__ == "__main__":
