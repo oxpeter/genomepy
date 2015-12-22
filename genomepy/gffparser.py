@@ -22,16 +22,16 @@ import gff2bed2
 from genomepy import genematch, config
 from genomepy.config import pickle_jar, open_pickle_jar, pickle_gtypes, unpickle_gtypes
 
-###### INITIALISE THE FILE PATHS NEEDED FOR ANALYSIS #######################
 
-dbpaths = config.import_paths()
+
+
 
 ####### CLASSES ############################################################
 
 class Splicer(object):
     """a class that allows analysis of splice junctions from a gff file and tophat
     junction files"""
-    def __init__(self, gff_file=dbpaths['lclgff'], chosenscaffold='All'):
+    def __init__(self, gff_file="", chosenscaffold='All'):
         ## construct canonical and alternate splice junctions from gff file:
         ## saved in 2 dictionaries: canonical = { 'scaffold2':{(5292,5344):'cbir_02775',():,():,():}
         ##                          alternate = { 'scaffold2':{(5292,5671):'cbir_02775',():,():,():}
@@ -212,15 +212,15 @@ class FastaLibrary(object):
         for line in handle:
             if line[0] == '>':
                 try:
-                    self.seqlib[query.group(1)] = geneseq
+                    self.seqlib[query.group(2)] = geneseq
                 except UnboundLocalError:
                     pass
-                query = re.search( '>([\w\|]+)', line)
+                query = re.search( '>(gi\|[0-9]+\|ref\|)?([\w]+)\|?', line)
                 geneseq = ""
             else:
                 geneseq += line.strip()
         else:
-            self.seqlib[query.group(1)] = geneseq
+            self.seqlib[query.group(2)] = geneseq
         handle.close()
 
         # report time (if requested)
@@ -262,16 +262,17 @@ class GffFeature(object):
         # assign a unique id:
         # NB: cds features do not have unique ids in the NCBI attribute field. Needs to be
         # combined with start position to become unique.
-        if self.flds['type'] == 'CDS':
-            suffix = "_%s" % str(self.flds['start'])
-        else:
-            suffix = ""
+        if not self.empty:
+            if self.flds['type'] == 'CDS':
+                suffix = "_%s" % str(self.flds['start'])
+            else:
+                suffix = ""
 
-        try:
-            id = self.atts['ID']
-        except KeyError:
-            id = random.randint(1000000,9999999)
-        self.id = "%s%s" % (id, suffix)
+            try:
+                id = self.atts['ID']
+            except KeyError:
+                id = random.randint(1000000,9999999)
+            self.id = "%s%s" % (id, suffix)
 
     def __repr__(self):
         return "%r %r %r" % (self.id, self.atts, self.flds)
@@ -645,7 +646,7 @@ class GffLibrary(object):
 
 class My_gff(object):
     "an object for quick assessment of where a GENE/SNP lies"
-    def __init__(self, gff_file=dbpaths['gff'], primary_key='ID', highest='gene'):
+    def __init__(self, gff_file="", primary_key='ID', highest='gene'):
 
         self.gff_origin = gff_file
         self.primary_key = primary_key
@@ -934,6 +935,57 @@ class My_gff(object):
 
 ####### FUNCTIONS ############################################################
 
+def define_parameters():
+    parser = argparse.ArgumentParser(description="Various GFF and gene-file manipulations")
+    ## output options
+    parser.add_argument("-d", "--directory", type=str,
+                        help="Specify the directory to save results to")
+    parser.add_argument("-o", "--output_file", type=str, default="output.list",
+                        help="Name of file to save results to")
+    parser.add_argument("-q", "--quiet", action='store_true', default=False,
+                        help="Print fewer messages and output details")
+
+    ## input options
+    parser.add_argument("-i", "--input_file", type=str,
+                        help="File to analyse")
+    parser.add_argument("-g", "--gff", type=str, default=dbpaths['gff'],
+                        help="GFF file for analyses")
+    parser.add_argument("-f", "--genome_file", type=str, default=dbpaths['ass'],
+                        help="Genome fasta file")
+    parser.add_argument("-G", "--GO_file", type=str, default=dbpaths['goterms'],
+                        help=".list file containing GO terms for each gene")
+
+    ## analysis options
+    parser.add_argument("--show_go", action='store_true', default=False,
+                        help="run GO analyses")
+    parser.add_argument("-I", "--investigate", action='store_true',
+                        help="Analyse a list of genes")
+    parser.add_argument("-b", "--blastoff", action='store_true',
+                        help="Turns off blast search for investigate option")
+    parser.add_argument("-M", "--methylation", action='store_true',
+                        help="Perform methylation analysis")
+    parser.add_argument("-S", "--splicing", type=str,
+                        help="Perform alternate splicing analysis on given file")
+    parser.add_argument("--bed2gtf", type=str,
+                        help="Converts from bed to both ex.gff and gtf formats")
+    parser.add_argument("--gff2bed", action='store_true',
+                        help="Converts from gff to bed format")
+    parser.add_argument("-t", "--trim", type=str,
+                        help="Trims UTRs from gff file")
+    parser.add_argument("-s", "--strip", type=str,
+                        help="Removes duplicate transcripts from bed file")
+    parser.add_argument("--upstream", type=int, default=450,
+                        help="Set a value for upstream boundary")
+    parser.add_argument("--downstream", type=int, default=50,
+                        help="Set a value for downstream boundary")
+    parser.add_argument("--promoters", type=str, default="",
+                        help="""Find promoter sequence for specified gene. If "all"
+                        is specified then all genes in gff will be searched.
+                        """)
+    parser.add_argument('-c', "--column", type=int, default=0,
+                        help="Set column number for extracting list values from. (Default=0)")
+
+    return parser
 
 ##### GFF FILE PARSING  ############
 
@@ -1030,7 +1082,7 @@ def extended_gff(gff_file):
     bed_h.close()
     gff_h.close()
 
-def make_bed(gff_file, assembly_file=dbpaths['assone']):
+def make_bed(gff_file, assembly_file):
     """ Takes a gff_file and creates a bed format including the scaffolds/contigs that
     do not have any features associated with them"""
 
@@ -1240,7 +1292,7 @@ def bed2gtf(bedfile):
     gff_h.close()
     gtf_h.close()
 
-def highest_cbir(file=dbpaths['pep']):
+def highest_cbir(file):
     "Finds the current highest number assigned to Cbir gene ids"
     pep_h = open(file, 'rb')
 
@@ -1358,7 +1410,7 @@ def parse_names(genelist, gffobj):
 
     return output_dict
 
-def assemble_dict(in_file=dbpaths['gff'], in_seq_file=dbpaths['ass'], features_only=False):
+def assemble_dict(in_file, in_seq_file, features_only=False):
     """ Takes a gff file and the genome assembly and creates a SeqRecord dictionary.
 
     INPUT:
@@ -1596,7 +1648,7 @@ def get_sequence(scaf, gff_dict, feature):
     sequence.alphabet = IUPAC.ambiguous_dna
     return sequence
 
-def parse_go(gene, gofile=dbpaths['goterms']):
+def parse_go(gene, gofile):
     "for a given gene or genelist, returns a dictionary of all GO terms associated with the gene"
 
     # make dictionary of go terms:
@@ -1765,7 +1817,7 @@ def create_polymorphism_files(gtypefile=os.path.realpath('./NSL_PILSIP.RD_15')):
 
     print "All done!"
 
-def find_next_isoform(gene_id, gff_file=dbpaths['gff']):
+def find_next_isoform(gene_id, gff_file):
     "returns the next number in the list of isoforms for a given gene"
     isoforms = []
 
@@ -1782,7 +1834,7 @@ def find_next_isoform(gene_id, gff_file=dbpaths['gff']):
 
 ##### FASTA FILE FUNCTIONS #####
 
-def count_chromosomes(assembly=dbpaths['assgi']):
+def count_chromosomes(assembly):
     "uses fasta file of genome to produce tab delimited list of chromosomes and their size"
     newfile = os.path.splitext(assembly)[0] + ".chrom.list"
     newfile_h = open(newfile, 'w')
@@ -2015,59 +2067,20 @@ def methylation_analysis(args):
 
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser(description="Various GFF and gene-file manipulations")
-    ## output options
-    parser.add_argument("-d", "--directory", type=str,
-                        help="Specify the directory to save results to")
-    parser.add_argument("-o", "--output_file", type=str, default="output.list",
-                        help="Name of file to save results to")
-    parser.add_argument("-q", "--quiet", action='store_true', default=False,
-                        help="Print fewer messages and output details")
-
-    ## input options
-    parser.add_argument("-i", "--input_file", type=str,
-                        help="File to analyse")
-    parser.add_argument("-g", "--gff", type=str, default=dbpaths['gff'],
-                        help="GFF file for analyses")
-    parser.add_argument("-f", "--genome_file", type=str, default=dbpaths['ass'],
-                        help="Genome fasta file")
-    parser.add_argument("-G", "--GO_file", type=str, default=dbpaths['goterms'],
-                        help=".list file containing GO terms for each gene")
-
-    ## analysis options
-    parser.add_argument("--show_go", action='store_true', default=False,
-                        help="run GO analyses")
-    parser.add_argument("-I", "--investigate", action='store_true',
-                        help="Analyse a list of genes")
-    parser.add_argument("-b", "--blastoff", action='store_true',
-                        help="Turns off blast search for investigate option")
-    parser.add_argument("-M", "--methylation", action='store_true',
-                        help="Perform methylation analysis")
-    parser.add_argument("-S", "--splicing", type=str,
-                        help="Perform alternate splicing analysis on given file")
-    parser.add_argument("--bed2gtf", type=str,
-                        help="Converts from bed to both ex.gff and gtf formats")
-    parser.add_argument("--gff2bed", action='store_true',
-                        help="Converts from gff to bed format")
-    parser.add_argument("-t", "--trim", type=str,
-                        help="Trims UTRs from gff file")
-    parser.add_argument("-s", "--strip", type=str,
-                        help="Removes duplicate transcripts from bed file")
-    parser.add_argument("--upstream", type=int, default=450,
-                        help="Set a value for upstream boundary")
-    parser.add_argument("--downstream", type=int, default=50,
-                        help="Set a value for downstream boundary")
-    parser.add_argument("--promoters", type=str, default="",
-                        help="""Find promoter sequence for specified gene. If "all"
-                        is specified then all genes in gff will be searched.
-                        """)
-    parser.add_argument('-c', "--column", type=int, default=0,
-                        help="Set column number for extracting list values from. (Default=0)")
+    dbpaths = config.import_paths()
+    parser = define_parameters()
 
     args = parser.parse_args()
 
     verbalise = config.check_verbose(not(args.quiet))
     logfile = config.create_log(args, outdir=args.directory, outname=args.output_file)
+
+    # allow use of config file presets to find reference files:
+    if args.gff in dbpaths.keys():
+        args.gff = dbpaths[args.gff]
+
+    if args.genome_file in dbpaths.keys():
+        args.genome_file = dbpaths[args.genome_file]
 
     if args.investigate:
         investigate(args, doblast=not(args.blastoff))
@@ -2102,17 +2115,17 @@ if __name__ == '__main__':
 
     if args.gff2bed:
         make_bed(args.input, args.genome_file)
+
     if args.trim:
         trim_untranslated(args.trim)
+
     if args.bed2gtf:
         bed2gtf(args.bed2gtf)
+
     if args.strip:
         strip_duplicates(args.strip)
-    if args.promoters:
-        # test of fastalib:
-        #fastalib = FastaLibrary(args.genome_file, True)
-        #verbalise("M", fastalib)
 
+    if args.promoters:
         # build gff library
         gfflib = GffLibrary(args.gff, args.genome_file)
         verbalise("G", gfflib.fastalib)
