@@ -205,6 +205,7 @@ class FastaLibrary(object):
         t0 = datetime.datetime.now()
         qc = 0
         self.seqlib ={}
+        self.fastafile = fastafile
         geneseq = ""
 
         # read genome fasta file
@@ -215,7 +216,7 @@ class FastaLibrary(object):
                     self.seqlib[query.group(2)] = geneseq
                 except UnboundLocalError:
                     pass
-                query = re.search( '>(gi\|[0-9]+\|ref\|)?([\w]+)\|?', line)
+                query = re.search( '>(gi\|[0-9]+\|ref\|)?([\w\.]+)\|?', line)
                 geneseq = ""
             else:
                 geneseq += line.strip()
@@ -235,10 +236,10 @@ class FastaLibrary(object):
         return key in self.seqlib
 
     def __repr__(self):
-        return "[FastaLibrary object] %r" % (fastafile)
+        return "[FastaLibrary object] %r" % (self.fastafile)
 
     def __str__(self):
-        return "Fasta Library: %s sequences" % (len(self.seqlib))
+        return "[FASTA LIBRARY]\nFrom file %s\n%d sequences" % (self.fastafile, len(self.seqlib))
 
 class GffFeature(object):
     "a sub-element of a gff library"
@@ -546,7 +547,7 @@ class GffLibrary(object):
             end   = max(f.flds['start'], f.flds['end']) + buffer
             if start < 0:
                 start = 0
-            seq   = self.fastalib[f.flds['scaf']][start:end ]
+            seq   = Seq(self.fastalib[f.flds['scaf']][start:end ])
 
             # check if reverse complement needs to be determined:
             if f.flds['strand']=='-':
@@ -555,7 +556,7 @@ class GffLibrary(object):
 
             defline = ">%s [%s, %d:%d]" % (f, f.flds['scaf'], start, end)
         else:
-            seq = None
+            seq = Seq("")
             defline = None
         return seq, defline
 
@@ -643,6 +644,7 @@ class GffLibrary(object):
         else:
             self.fastalib = None
 
+####### DEPRECATED CLASS (MAINTAINED CURRENTLY FOR BACKWARDS COMPATABILITY) ############
 
 class My_gff(object):
     "an object for quick assessment of where a GENE/SNP lies"
@@ -933,7 +935,7 @@ class My_gff(object):
         except KeyError:
             return None
 
-####### FUNCTIONS ############################################################
+####### FUNCTIONS ######################################################################
 
 def define_parameters():
     parser = argparse.ArgumentParser(description="Various GFF and gene-file manipulations")
@@ -1013,10 +1015,20 @@ def parse_cols(line):
     if line[0] == '#':
         return None
     cols = line.split()
-    attrs = { "scaf":cols[0],       "source":cols[1],   "type":cols[2],
-              "start":int(cols[3]),  "end":int(cols[4]),
-              "score":cols[5],  "strand":cols[6],   "phase":cols[7]
-            }
+    try:
+        attrs = { "scaf":cols[0],       "source":cols[1],   "type":cols[2],
+                  "start":int(cols[3]),  "end":int(cols[4]),
+                  "score":cols[5],  "strand":cols[6],   "phase":cols[7]
+                }
+    except ValueError:
+        cols = line.split('\t')
+        try:
+            attrs = { "scaf":cols[0],       "source":cols[1],   "type":cols[2],
+                  "start":int(cols[3]),  "end":int(cols[4]),
+                  "score":cols[5],  "strand":cols[6],   "phase":cols[7]
+                }
+        except ValueError:
+            verbalise("R", "Error parsing line:\n%s" % line)
     return attrs
 
 
@@ -2127,10 +2139,11 @@ if __name__ == '__main__':
 
     if args.promoters:
         # build gff library
+        verbalise("B", "Building gene library...")
         gfflib = GffLibrary(args.gff, args.genome_file)
-        verbalise("G", gfflib.fastalib)
+        #verbalise("G", gfflib.fastalib)
         verbalise("G", gfflib)
-
+        verbalise("B", "Extracting promoters...")
         # extract promoters
         all_promoters = {}
         if args.promoters == 'all':
@@ -2149,14 +2162,18 @@ if __name__ == '__main__':
         errorlog = logfile[:-3] + 'errors.log'
         handle = open(outname, 'w')
         errhandle = open(errorlog, 'a')
+        errcount = 0
         for p in all_promoters:
             for defline in all_promoters[p]:
                 if str(all_promoters[p][defline])[-7:] == 'library':
                     errhandle.write('%s\n%s\n' % (defline, str(all_promoters[p][defline])))
+                    errcount += 1
                 else:
                     handle.write('%s\n%s\n' % (defline, str(all_promoters[p][defline])))
         handle.close()
         errhandle.close()
+        if errcount > 0:
+            verbalise("R", "%d genes could not have their sequence extracted" % errcount)
 
 
 
