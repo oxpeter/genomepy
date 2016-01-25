@@ -551,8 +551,8 @@ class GffLibrary(object):
 
             # check if reverse complement needs to be determined:
             if f.flds['strand']=='-':
-                seq_rc = Seq(seq, generic_dna).reverse_complement()
-                seq    = seq_rc
+                #seq_rc = Seq(seq, generic_dna).reverse_complement()
+                seq    = seq.reverse_complement()
 
             defline = ">%s [%s, %d:%d]" % (f, f.flds['scaf'], start, end)
         else:
