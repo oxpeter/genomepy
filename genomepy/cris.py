@@ -391,7 +391,7 @@ def main(args, logfile, verbalise):
 
     error_log = []
     if args.gene:
-        sequences = gffobj.extractseq(args.gene, buffer=0)
+        sequences = gffobj.extractseq(args.gene, cds=True, buffer=0)
         sequencefile = logfile[:-3] + 'input_file.fasta'
         handle = open(sequencefile, 'w')
         for defline in sequences:
