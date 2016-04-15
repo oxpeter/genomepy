@@ -968,6 +968,8 @@ def define_parameters():
                         help="Perform methylation analysis")
     parser.add_argument("-S", "--splicing", type=str,
                         help="Perform alternate splicing analysis on given file")
+    parser.add_argument("--gff2gtf", action='store_true',
+                        help="Converts from gff to both ex.gtf and cds.gtf formats")
     parser.add_argument("--bed2gtf", type=str,
                         help="Converts from bed to both ex.gff and gtf formats")
     parser.add_argument("--gff2bed", action='store_true',
@@ -1002,6 +1004,8 @@ def parse_atts(line):
     if line[0] == '#':
         return None
     cols = line.split()
+    if len(cols) < 9:
+        return None
     attr = { pair.split('=')[0]:pair.split('=')[1] for pair in " ".join(cols[8:]).split(';')  }
     return attr
 
@@ -1034,18 +1038,62 @@ def parse_cols(line):
 
 ##### GFF FILE MANIPULATION ########
 
-def gff2gtf(gff_file):
+def gff2gtf(gff_file, outfile):
     "converts a gff file to gtf"
-    gtf_file = os.path.splitext(gff_file)[0] + ".gtf"
+    gtf_file = outfile[:-4] + ".CDS.gtf"
+    gtf_alignment_file = outfile[:-4] + ".exon.gtf"
+
+    gtf_al = open(gtf_alignment_file, 'w')
     gtf_h = open(gtf_file, 'w')
     gff_h = open(gff_file, 'rb')
 
     for line in gff_h:
-        cds_patt = '(.*)Parent=([A-Za-z0-9_\(\)]*)'
-        parentline = re.search(cds_patt, line)
-        if parentline is not None:
-            newline = parentline.groups()[0] + '\tgene_id "' + parentline.groups()[1] + '"; transcript_id "' + parentline.groups()[1] + ';\n'
+        fields = line.split()
+
+        atts = parse_atts(line)
+        if not atts:
+            continue
+        #gene = re.search('gene=([\w\(\)\. ]+);', line)
+        #exon = re.search('transcript_id=([\w\(\)\. ]+);?', line)
+        #cds  = re.search('protein_id=([\w\(\)\. ]+);?', line)
+
+        # set transcript name:
+        if 'transcript_id' in atts:
+            exon = atts['transcript_id']
+        elif 'ID' in atts:
+            exon  = atts['ID']
+        else:
+            exon = None
+
+        # set CDS transcript name:
+        if 'protein_id' in atts:
+            cds = atts['protein_id']
+        elif 'ID' in atts:
+            cds = atts['ID']
+        else:
+            cds = None
+
+        # set gene name:
+        if 'gene' in atts:
+            gene = atts['gene']
+        elif 'Parent' in atts:
+            gene = atts['Parent']
+        else:
+            gene = None
+
+        # generate gtf files
+        if gene and exon and fields[2].upper() == 'EXON':
+            newline =   "\t".join(fields[:8]) + \
+                        '\tgene_id "' + gene + \
+                        '"; transcript_id "' + exon + '";\n'
+            gtf_al.write(newline)
+        elif gene and cds and fields[2].upper() == 'CDS':
+            newline =   "\t".join(fields[:8]) + \
+                        '\tgene_id "' + gene + \
+                        '"; transcript_id "' + cds + '";\n'
             gtf_h.write(newline)
+
+    gtf_h.close()
     gtf_h.close()
     gff_h.close()
 
@@ -2136,6 +2184,9 @@ if __name__ == '__main__':
 
     if args.strip:
         strip_duplicates(args.strip)
+
+    if args.gff2gtf:
+        gff2gtf(args.gff, logfile)
 
     if args.promoters:
         # build gff library
