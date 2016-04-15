@@ -224,7 +224,7 @@ def parse_crispr_blast(blast_results, gffobj, id_thresh=18, gap_thresh=0, showne
     "parses the tab delimited blastn results to filter out sequences that are no good"
     results_dict = {}
     blastresults_h = open(blast_results, 'rb')
-    blastparser = (line.split() for line in blastresults_h)
+    blastparser = (line.split() for line in blastresults_h if len(line.split())==10 )
     # for each sequence, create a list of blast results (each result contained as a dict):
     for qseqid, qlen, nident, mismatch, gaps, sseq, sseqid, sstart, send, qstart in blastparser:
         # check to see if result has PAM sequence or not:
