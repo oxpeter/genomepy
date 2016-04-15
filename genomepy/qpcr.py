@@ -290,7 +290,7 @@ def main(args, logfile):
     genelist = config.make_a_list(args.gene_list)
 
     verbalise("B", "Assembling gff file...")
-    quickinfo = gffparser.My_gff()
+    #quickinfo = gffparser.My_gff()
 
     gfflib = gffparser.GffLibrary(args.gff_file, args.assembly_file)
 
