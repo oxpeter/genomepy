@@ -242,7 +242,12 @@ class FastaLibrary(object):
         return "[FASTA LIBRARY]\nFrom file %s\n%d sequences" % (self.fastafile, len(self.seqlib))
 
 class GffFeature(object):
-    "a sub-element of a gff library"
+    """
+    Gff features essentially represent lines of a gff file, containing all their
+    attributes in accessible formats. Gff features can also contain links to all and any
+    parent or children features, allowing quick assessment of a gene's total attributes
+    after starting with only a single subfeature.
+    """
     def __init__(self, line="" ):
         self.grandparent = None
         self.parent = None
@@ -274,6 +279,38 @@ class GffFeature(object):
             except KeyError:
                 id = random.randint(1000000,9999999)
             self.id = "%s%s" % (id, suffix)
+
+    def check_relationships(self):
+        """
+        looks for a logical connection between the feature and all registered parents and
+        offspring
+        """
+        # check consistency with parent:
+        if self.parent:
+            pass
+
+        # check consistency with grandparent:
+        if self.grandparent:
+            pass
+
+        # check consistency of offspring:
+        if self.children:
+            pass
+
+        if self.grandchildren:
+            pass
+
+        return None
+
+    def build_master_gene(self):
+        """
+        This will contain a method comparable to that in GffLibrary, since this is
+        a better location for the method. That way, all master genes are stored as
+        features with the information that created them, and they can be more dynamically
+        be accessed and dealt with.
+        """
+        return None
+
 
     def __repr__(self):
         return "%r %r %r" % (self.id, self.atts, self.flds)
