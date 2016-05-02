@@ -195,7 +195,8 @@ class Fisher_square(object):
                 [self.NwG, self.NwoG]
             ], alternative=alt)
         except ValueError:
-            verbalise("R", "Error performing Fishers Exact:", self)
+            print "ERROR PERFORMING FISHERS EXACT TEST"
+            print self
 
 ############################################
 def define_arguments():
