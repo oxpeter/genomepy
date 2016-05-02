@@ -1036,8 +1036,6 @@ def parse_atts(line):
     The function takes the 9th column (containing all the feature attributes) and returns
     a dictionary of { attribute_name : attribute_value }
     """
-    if len(line) == 0:
-        return None
     if line[0] == '#':
         return None
     cols = line.split()
@@ -1050,24 +1048,36 @@ def parse_cols(line):
     """
     Takes a gff line and extracts the information from the first 8 columns, returning
     them in a dictionary.
+
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!! This function converts positions to 0-based counting system !!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
     """
     if len(line) == 0:
         return None
     if line[0] == '#':
         return None
+
+    def fill(cols):
+        attrs = {   "scaf":cols[0],
+                    "source":cols[1],
+                    "type":cols[2],
+                    "start":int(cols[3]) - 1,
+                    "end":int(cols[4]),
+                    "score":eval(cols[5]) if cols[5] != "." else ".",
+                    "strand":cols[6],
+                    "phase":eval(cols[7]) if cols[7] != "." else "."
+                }
+        return attrs
+
     cols = line.split()
     try:
-        attrs = { "scaf":cols[0],       "source":cols[1],   "type":cols[2],
-                  "start":int(cols[3]),  "end":int(cols[4]),
-                  "score":cols[5],  "strand":cols[6],   "phase":cols[7]
-                }
+        attrs = fill(cols)
     except ValueError:
-        cols = line.split('\t')
+        cols = line.split('\t') # for when spaces are used in the source or type fields
         try:
-            attrs = { "scaf":cols[0],       "source":cols[1],   "type":cols[2],
-                  "start":int(cols[3]),  "end":int(cols[4]),
-                  "score":cols[5],  "strand":cols[6],   "phase":cols[7]
-                }
+            attrs = fill(cols)
         except ValueError:
             verbalise("R", "Error parsing line:\n%s" % line)
     return attrs
